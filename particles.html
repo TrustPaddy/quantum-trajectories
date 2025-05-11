@@ -1,0 +1,1612 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Particle Simulation</title>  
+    <style>
+      body {
+        font-family: Arial;
+        color: black;
+      }
+    
+      .split {
+        width: 100%;
+        position: fixed;
+        z-index: 1;
+        left: 0;
+        overflow-y: hidden;
+        padding-left: 20px;
+      }
+    
+      .top {
+        top: 0;
+        height: 18%; /* Obere Hälfte */
+        background-color: white;
+      }
+    
+      .bottom {
+        bottom: 0;
+        height: 82%; /* Untere Hälfte */
+        width: 100%;
+        display: flex;
+        background-color: white;
+      }
+
+      .bottom-left {
+        width: 20%;
+        height: 100%;
+        background-color: white; /* Farbe für die linke Hälfte */
+      }
+
+      .bottom-right {
+        width: 80%;
+        height: 100%;
+        background-color: white; /* Farbe für die rechte Hälfte */
+      }
+    </style>  
+    <style>
+      table {
+        font-family: arial, sans-serif;
+        border-collapse: collapse;
+        width: 100%;
+      }
+    
+      td, th {
+        border: 2px solid white; 
+        text-align: left;
+        padding: 8px;
+      }
+    
+      tr:nth-child(even) {
+        background-color: white; 
+      }
+    </style>
+    <style>
+      .inline-elements {
+        display: inline-block;
+        margin-right: 10px;
+      }
+
+      .button-container {
+      display: inline-flex;
+      flex-direction: column; /* Buttons werden vertikal gestapelt */
+    }
+
+    button {
+      margin: 2px 0; /* Abstand zwischen den Buttons */
+    }
+    </style> 
+       <style>
+        /* Stil für die LED (rot leuchtend) */
+        .led {
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background-color: #333; /* darker grey background */
+          box-shadow: 0 0 5px rgba(255, 0, 0, 0.8);
+          transition: background-color 0.3s ease, box-shadow 0.3s ease;
+        }
+      
+        /* Wenn recording an ist (LED leuchtet rot) */
+        .recording .led {
+          background-color: #FF3737; /* bright red color */
+          box-shadow: 0 0 10px rgba(255, 0, 0, 1);
+          animation: pulse 1s infinite; /* add a pulsing effect */
+        }
+      
+        /* pulsing effect animation */
+        @keyframes pulse {
+          0% {
+            transform: scale(0.9);
+          }
+          70% {
+            transform: scale(1.1);
+          }
+          100% {
+            transform: scale(0.9);
+          }
+        }
+      
+        /* Stil für den Button */
+        .container {
+          display: flex;
+          align-items: center;
+          gap: 10px; /* Abstand zwischen LED und Button */
+        }
+      </style>          
+    <script src="aframe-v1.5.0.min.js"></script> 
+    <script>
+      var frames = 0;
+      var fps;
+
+      /**
+       * A component to generate data for the FPS counter.
+       * Calculates the average number of frames rendered per second.
+       * Emits the "event1" event with the FPS value every second.
+       */
+      AFRAME.registerComponent('generate-data', {
+        /**
+         * Initializes the component.
+         * Sets up the timer and binding for the FPS event.
+         */
+        init() {
+          this.startTime = Date.now();
+          this.emitFPS = this.emitFPS.bind(this);
+
+          // Set up the timer to emit the FPS value every second
+          setInterval(this.emitFPS, 1000);
+        },
+        /**
+         * Calculates the average number of frames rendered per second.
+         * Emits the "event1" event with the FPS value.
+         */
+        emitFPS() {
+          const currentTime = Date.now();
+          const elapsedTime = (currentTime - this.startTime) / 1000;
+          fps = frames / elapsedTime;
+
+          // Emit the FPS value as an event
+          this.el.emit("event1", { fps: fps.toFixed(2) });
+
+          // Reset the frame counter
+          frames = 0;
+          this.startTime = currentTime;
+        },
+      });
+    </script>      
+  </head>
+  <body>
+    <div class="split bottom">
+      <div class="bottom-left">
+        <!--
+          Display for the distance and energy of the particles
+        -->
+        Distance: <span id="Distance">0</span> <br><br>
+
+        Energy: <span id="Energy">0</span> <br><br>
+
+        <!--
+          Display for the positions of the particles
+        -->
+        Pos. 1 <br>
+        X: <span id="posx1">0</span> <br>
+        Y: <span id="y1">0</span> <br>
+        Z: <span id="z1">0</span> <br>
+        
+        <br>
+        Pos. 2 <br>
+        X: <span id="x2">0</span> <br>
+        Y: <span id="y2">0</span><br>
+        Z: <span id="z2">0</span><br>
+        
+        <br>
+        <!--
+          Display for the force between the particles
+        -->
+        Force <br>
+        X: <span id="fx">0</span> <br>
+        Y: <span id="fy">0</span> <br>
+        Z: <span id="fz">0</span>
+      
+      </div>
+
+      <div class="bottom-right">
+      <a-scene embedded 
+      stats-panel="merge: true"
+      stats-group__1="label: Framerate"
+      stats-row__1="group: 1; event: event1; properties: fps; label: fps"
+      generate-data
+      
+      cursor="rayOrigin: mouse">
+     
+      <a-entity id="camera" camera="zoom: 4" look-controls wasd-controls position="0 0 800">
+        <a-cursor geometry="primitive: ring; radiusInner: 0.000001; radiusOuter: 0.0000015">
+          <a-box height="0.0005" width="0.005" depth="0.00005" color="black"></a-box>
+          <a-box height="0.005" width="0.0005" depth="0.00005" color="black"></a-box>
+        </a-cursor></a-cursor></a-entity> 
+
+
+      <a-sky color="white"></a-sky>
+
+      </a-scene>
+      </div>  
+    </div>
+
+    <div class="split top">
+      <table>
+        <tr>
+          <!--
+            The following table contains controls for the animation.
+          -->
+          <td>
+            <div class="container">
+              <!--
+                The following div will contain a LED which will be red if the animation is running and green if it is stopped.
+              -->
+              <div class="led" id="led"></div>
+              <!--
+                The following button will start or stop the animation when clicked.
+              -->
+              <button id="myButton" onclick="startAnimation()">Start</button>
+            </div>
+          </td>
+          <td>
+            <!--
+              The following button will set the velocity of all particles to zero when clicked.
+            -->
+            <button onclick="setVelocitiesToZero()" title="Set Velocity of All Particles to Zero">v = 0</button>    
+          </td>
+          <td>         
+            <!--
+              The following checkbox will lock the position of the nucleus when checked.
+            -->
+            <label for="check2">Lock:</label>
+            <input type="checkbox" id="check2" name="check2">
+          </td>
+          <td> Path: 
+            <!--
+              The following button will start or stop the recording of the trajectory when clicked.
+            -->
+            <button id="PathButton" onclick="startRecord()" title="Start and Stop Recording of the Trajectory">⏵</button>
+            <!--
+              The following button will delete the recording of the trajectory when clicked.
+            -->
+            <button onclick="deletePath()" title="Delete Recording of the Trajectory">⏹</button>
+          </td>
+          <td>
+            <!--
+              The following span will display the current energy level.
+            -->
+            <span class="inline-elements" title="Energylevel" >N:</span>
+            <p id="nLvl" class="inline-elements">1</p>
+            <!--
+              The following buttons will increase or decrease the energy level when clicked.
+            -->
+            <span class="button-container">
+            <button onclick="incrementEnergyLevel()">+ </button>
+            <button onclick="decrementEnergyLevel()">-</button></span>
+          </td>
+          <td> 
+            <!--
+              The following span will display the current angular momentum.
+            -->
+            <span class="inline-elements" title="Angular-Momentum">L:</span>
+            <p id="lLvl" class="inline-elements">0</p>
+            <!--
+              The following buttons will increase or decrease the angular momentum when clicked.
+            -->
+            <span class="button-container">
+            <button onclick="incrementAngularMomentum()">+</button>
+            <button onclick="decrementAngularMomentum()">-</button></span>
+          </td>
+          <td>Atom:
+            <!--
+              The following select will change the atom model when an option is selected.
+            -->
+            <select id="atomSelect" onchange="changeAtomModel(this.value)">
+              <option value="HAtom">H Atom</option>
+              <option value="H2Cation">H2+ Cation</option>
+              <option value="HAnion">H- Anion</option>
+              <option value="HECation">He+ Cation</option>
+              <option value="HEAtom">He Atom</option>
+            </select>   
+          </td>
+          <td>
+            <!--
+              The following span will display the current number of electrons.
+            -->
+            <span class="inline-elements" title="Number of Electrons">n-E:</span>
+            <p id="DispCountElectron" class="inline-elements">1</p>
+            <!--
+              The following buttons will increase or decrease the number of electrons when clicked.
+            -->
+            <span class="button-container">
+              <button onclick="changeCountElectron(1)">+</button>
+              <button onclick="changeCountElectron(-1)">-</button>
+            </span>
+          </td>
+          <td>
+            <!--
+              The following span will display the current number of protons.
+            -->
+            <span class="inline-elements" title="Number of Protons">n-P:</span>
+            <p id="DispCountProton" class="inline-elements">1</p>
+            <!--
+              The following buttons will increase or decrease the number of protons when clicked.
+            -->
+            <span class="button-container">
+              <button onclick="changeCountProton(1)">+</button>
+              <button onclick="changeCountProton(-1)">-</button>
+            </span>
+          </td>
+          <td>
+            <!--
+              The following checkbox will enable the Larmor precession when checked.
+            -->
+            <label for="check1">Larmor:</label>
+            <input type="checkbox" id="check1" name="check1">
+          </td>
+          <td>
+            <!--
+              The following checkbox will enable the spin of the electrons when checked.
+            -->
+            <label for="check3">Spin:</label>
+            <input type="checkbox" id="check3" name="check3">
+          </td>
+          <td>
+            <!--
+              The following select will change the speed of the animation when an option is selected.
+            -->
+            dt:
+            <select id="speedSelect" onchange="changeInterval(this.value)">
+              <option value = 33.33>Normal</option>
+              <option value = 6.67>Fast</option>           
+              <option value = 166.67>Slow</option>
+            </select>
+          </td>
+          <td>
+            <!--
+              The following inputs will allow the user to set the initial position of the electron.
+            -->
+            <label>X:</label>
+            <input type="text" id="Xs" size="5">
+            <br>
+            <label>Y:</label>
+            <input type="text" id="Ys" size="5">
+            <br>
+            <label>Z:</label>
+            <input type="text" id="Zs" size="5">
+            </tr>       
+          </td>
+        </tr>
+      </table>   
+    </div>
+  <script>  
+    const sceneEl = document.querySelector('a-scene');
+    const cameraEl = document.querySelector('#camera');
+    const button = document.getElementById("myButton");
+    const pathButton = document.getElementById("PathButton");
+    const led = document.getElementById('led');
+                
+    const particles = [];
+
+    const particleEl = []; 
+
+    const bohrRadius = [];
+
+    let atom = "H Atom";
+       
+    const e0 = 8.8541878128e-12;
+    const a0 = 5.29177210903e-11;
+    const c = 2.99792e8;
+    const k = 4 * Math.PI * e0;
+
+    let isAnimationRunning = false;
+
+    let isLamor = false;
+    
+    const inputField = {
+      X: document.getElementById("Xs"),
+      Y: document.getElementById("Ys"),
+      Z: document.getElementById("Zs"),
+      Veff: document.getElementById("Veff"),
+    }
+    
+    let indexOfParticle;
+
+    let countProton = 1;
+    let countElectron = 1;
+
+    let dt = 1000/30;
+
+    let Z = 1;
+
+    let isNucleusLocked = false;
+
+    const RadConst = 2/(3*c*c*c)
+
+    let N = 1;
+
+    let L = 0;
+
+    let isAngularMomentum = 0;
+
+    let radiation = 1;
+
+    let timePassed = 0;
+
+    let countTime = 0;
+
+    let angle = 0;
+
+    let isRecordPath = false;
+
+    /**
+     * Toggles the animation state between running and stopped.
+     * Updates the button text and LED recording indicator accordingly.
+     */
+    function startAnimation() {
+      isAnimationRunning = !isAnimationRunning;
+      button.textContent = isAnimationRunning ? "Stop" : "Start";
+      led.classList.toggle('recording', isAnimationRunning);
+    }
+
+   
+
+    /**
+     * Toggles the Larmor precession on or off.
+     * @param {boolean} a - true to enable Larmor precession, false to disable it
+     */
+    function toggleLamor(a) {
+      isLamor = a;
+    }
+
+
+
+    /**
+     * Converts a 3D cartesian coordinate (x, y, z) to a 3D polar coordinate (r, θ, φ).
+     * @param {Number} x - x-coordinate in the cartesian system
+     * @param {Number} y - y-coordinate in the cartesian system
+     * @param {Number} z - z-coordinate in the cartesian system
+     * @returns {Array<number>} [r, θ, φ] - polar coordinates (radius, theta, phi)
+     */
+    function cartInPolar(x, y, z) {
+        const r = Math.sqrt(x * x + y * y + z * z);
+        const θ = Math.acos(z/r);
+        const φ = Math.atan2(y, x);
+        return [r, θ , φ];
+    }
+        
+
+
+    // new class of particles with the attributes of particles
+    class Particle {
+      /**
+       * Creates a new particle with the given properties.
+       * @param {number} mass - mass of the particle
+       * @param {number} charge - charge of the particle
+       * @param {number} spin - spin of the particle
+       * @param {THREE.Vector3} velocity - velocity of the particle
+       * @param {THREE.Vector3} cartPos - position of the particle in cartesian coordinates
+       * @param {string} type - type of the particle (proton or electron)
+       */
+      constructor(mass, charge, spin, velocity, cartPos, type) {
+        this.mass = mass;
+        this.charge = charge;  
+        this.spin = spin;
+        this.velocity = velocity;
+        this.cartPos = cartPos;
+        this.polarPos = cartInPolar(cartPos.x, cartPos.y, cartPos.z);
+        this.type = type;
+        this.index; // index of the particle
+        this.n; 
+        this.l;
+        this.m_l;
+        this.m_s;
+      }
+    }
+
+
+
+    /**
+     * Creates a new atom model for a Hydrogen 2 Cation (H2+).
+     * @function createH2Cation
+     */
+    function createH2Cation() {
+      isAnimationRunning = false;
+      button.textContent = "Start";
+
+      // Reset the particle list
+      while (particles.length > 0) {
+        particles.pop();
+        sceneEl.removeChild(particleEl[particleEl.length-1]);
+        particleEl.pop();     
+      }
+
+      // Reset the bohr radius ring list
+      while (bohrRadius.length > 0) {
+        sceneEl.removeChild(bohrRadius[bohrRadius.length-1]);
+        bohrRadius.pop();
+      }
+    
+      // Create the first proton
+      particles[0] = new Particle(
+          1.6726219e-27, 
+          1.602176634e-19, 
+          +0.5,
+          new THREE.Vector3(0, 0, 0), 
+          new THREE.Vector3(-52.917e-12, 0 ,0),
+          "proton"
+      );
+      particleEl[0] = document.createElement('a-sphere'); 
+      particleEl[0].setAttribute('radius', 14);
+      particleEl[0].setAttribute('color', 'red');
+      sceneEl.appendChild(particleEl[0]); 
+      bohrRadius[0] = document.createElement('a-ring');   
+      bohrRadius[0].setAttribute('radius-inner', a0 * 9.99e11);
+      bohrRadius[0].setAttribute('radius-outer', a0 * 1.01e12);
+      bohrRadius[0].setAttribute('color', 'grey'); 
+      sceneEl.appendChild(bohrRadius[0]);
+
+      // Create the second proton
+      particles[1] = new Particle(
+          1.6726219e-27, 
+          1.602176634e-19, 
+          0.5, 
+          new THREE.Vector3(0, 0, 0), 
+          new THREE.Vector3(52.917e-12, 0, 0),
+          "proton"
+      ); 
+      particleEl[1] = document.createElement('a-sphere'); 
+      particleEl[1].setAttribute('radius', 14);
+      particleEl[1].setAttribute('color', 'red');
+      sceneEl.appendChild(particleEl[1]); 
+      bohrRadius[1] = document.createElement('a-ring');   
+      bohrRadius[1].setAttribute('radius-inner', a0 * 9.99e11);
+      bohrRadius[1].setAttribute('radius-outer', a0 * 1.01e12);
+      bohrRadius[1].setAttribute('color', 'grey'); 
+      sceneEl.appendChild(bohrRadius[1]);
+
+      // Create the electron
+      particles[2] = new Particle(
+        9.10938356e-31, 
+        -1.602176634e-19, 
+        0.5, 
+        new THREE.Vector3(0, 0, 0), 
+        new THREE.Vector3(0, 0, 0),
+        "electron"
+      )
+      particleEl[2] = document.createElement('a-sphere');
+      particleEl[2].setAttribute('radius', 5);
+      particleEl[2].setAttribute('color', 'blue');
+      sceneEl.appendChild(particleEl[2]);
+
+      // Add click event listeners to the particles
+      for (let i in particleEl) {
+        particleEl[i].index = i;
+        particleEl[i].addEventListener('click', (event) => {
+          indexOfParticle = particleEl[i].index;
+          document.getElementById("Xs").value = particleEl[i].getAttribute('position').x.toString();
+          document.getElementById("Ys").value = particleEl[i].getAttribute('position').y.toString();
+          document.getElementById("Zs").value = particleEl[i].getAttribute('position').z.toString();
+        });               
+      } 
+
+      // Set the atomic number (Z) to 1
+      Z = 1;
+      // Set the atom name to "H2 Cation"
+      atom = "H2 Cation"
+    }
+
+    /**
+     * Creates an H anion
+     */
+    function createHAnion() {
+      isAnimationRunning = false;
+      button.textContent = "Start";
+
+      // Remove all particles and Bohr radius rings from the scene
+      while (particles.length > 0) {
+        particles.pop();
+        sceneEl.removeChild(particleEl[particleEl.length-1]);
+        particleEl.pop();     
+      }
+
+      while (bohrRadius.length > 0) {
+        sceneEl.removeChild(bohrRadius[bohrRadius.length-1]);
+        bohrRadius.pop();
+      }
+
+      // Create the proton
+      particles[0] = new Particle(
+        1.6726219e-27, 
+        1.602176634e-19, 
+        0.5, 
+        new THREE.Vector3(0, 0, 0), 
+        new THREE.Vector3(0, 0, 0),
+        "proton"
+      );
+      const newProton = document.createElement('a-sphere'); 
+      newProton.setAttribute('radius', 14);
+      newProton.setAttribute('color', 'red');
+      particleEl[0] = newProton;   
+      newProton.object3D.position.set(0, 0, 0);   
+      sceneEl.appendChild(newProton); 
+      const newBohr = document.createElement('a-ring');   
+      newBohr.setAttribute('radius-inner', a0 * 9.99e11);
+      newBohr.setAttribute('radius-outer', a0 * 1.01e12);
+      newBohr.setAttribute('color', 'grey');
+      bohrRadius[0] = newBohr;  
+      newBohr.object3D.position.set(0, 0, 0);    
+      sceneEl.appendChild(newBohr);
+
+      // Create the two electrons
+      particles[1] = new Particle(
+        9.10938356e-31, 
+        -1.602176634e-19, 
+        0.5, 
+        new THREE.Vector3(0, 0, 0), 
+        new THREE.Vector3(-52.917e-12, 0, 0),
+        "electron"
+      )   
+      particleEl[1] = document.createElement('a-sphere');
+      particleEl[1].setAttribute('radius', 5);
+      particleEl[1].setAttribute('color', 'blue');
+      particleEl[1].object3D.position.set(5.2918, 0, 0); 
+      sceneEl.appendChild(particleEl[1]);
+
+      particles[2] = new Particle(
+        9.10938356e-31, 
+        -1.602176634e-19, 
+        0.5, 
+        new THREE.Vector3(0, 0, 0), 
+        new THREE.Vector3(52.917e-12, 0, 0),
+        "electron"
+      );
+      particleEl[2] = document.createElement('a-sphere');
+      particleEl[2].setAttribute('radius', 5);
+      particleEl[2].setAttribute('color', 'blue');
+      particleEl[2].object3D.position.set(5.2918, 0, 0); 
+      sceneEl.appendChild(particleEl[2]);
+
+      // Add event listeners to the particles
+      for (let i in particleEl) {
+        particleEl[i].index = i;
+        particleEl[i].addEventListener('click', (event) => {
+          indexOfParticle = particleEl[i].index;
+          document.getElementById("Xs").value = particleEl[i].getAttribute('position').x.toString();
+          document.getElementById("Ys").value = particleEl[i].getAttribute('position').y.toString();
+          document.getElementById("Zs").value = particleEl[i].getAttribute('position').z.toString();
+        });               
+      } 
+      // Set the atomic number (Z) to 1
+      Z= 1;
+      // Set the atom name to "H Anion"
+      atom = "H Anion"
+    }
+
+    /**
+     * Creates a new atom model for a Hydrogen Atom (H).
+     * @function createHAtom
+     */
+    function createHAtom() {
+      isAnimationRunning = false;
+      button.textContent = "Start";
+
+      // Reset the particle list
+      while (particles.length > 0) {
+        particles.pop();
+        sceneEl.removeChild(particleEl[particleEl.length-1]);
+        particleEl.pop();     
+      }
+
+      // Reset the bohr radius ring list
+      while (bohrRadius.length > 0) {
+        sceneEl.removeChild(bohrRadius[bohrRadius.length-1]);
+        bohrRadius.pop();
+      }
+
+      // Create the proton
+      particles[0] = new Particle(
+        1.6726219e-27, 
+        1.602176634e-19, 
+        0.5, 
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(0, 0, 0),
+        "proton"
+      );
+      const newProton = document.createElement('a-sphere'); 
+      newProton.setAttribute('radius', 14);
+      newProton.setAttribute('color', 'red');
+      particleEl[0] = newProton;   
+      newProton.object3D.position.set(0, 0, 0);   
+      sceneEl.appendChild(newProton); 
+      const newBohr = document.createElement('a-ring');   
+      newBohr.setAttribute('radius-inner', a0 * 9.99e11);
+      newBohr.setAttribute('radius-outer', a0 * 1.01e12);
+      newBohr.setAttribute('color', 'grey');
+      bohrRadius[0] = newBohr;  
+      newBohr.object3D.position.set(0, 0, 0);    
+      sceneEl.appendChild(newBohr);
+
+      // Create the electron
+      particles[1] = new Particle(
+        9.10938356e-31, 
+        -1.602176634e-19, 
+        0.5, 
+        new THREE.Vector3(0, 0, 0), 
+        new THREE.Vector3(-52.917e-12, 0, 0),
+        "electron"
+      ) 
+      particleEl[1] = document.createElement('a-sphere');
+      particleEl[1].setAttribute('radius', 5);
+      particleEl[1].setAttribute('color', 'blue');
+      particleEl[1].object3D.position.set(5.2918, 0, 0); 
+      sceneEl.appendChild(particleEl[1]);
+
+      // Add event listeners to the particles
+      for (let i in particleEl) {
+          particleEl[i].index = i;
+          particleEl[i].addEventListener('click', (event) => {
+            indexOfParticle = particleEl[i].index;
+            document.getElementById("Xs").value = particleEl[i].getAttribute('position').x.toString();
+            document.getElementById("Ys").value = particleEl[i].getAttribute('position').y.toString();
+            document.getElementById("Zs").value = particleEl[i].getAttribute('position').z.toString();
+          });               
+      } 
+
+      // Set the atomic number (Z) to 1
+      Z= 1;
+      // Set the atom name to "H Atom"
+      atom = "H Atom"
+    }
+   
+    /**
+     * Creates a Helium Cation (HE+)
+     */
+    function createHECation() {
+      isAnimationRunning = false;
+      button.textContent = "Start";
+
+      // Remove all particles and Bohr radius rings from the scene
+      while (particles.length > 0) {
+        particles.pop();
+        sceneEl.removeChild(particleEl[particleEl.length - 1]);
+        particleEl.pop();
+      }
+
+      while (bohrRadius.length > 0) {
+        sceneEl.removeChild(bohrRadius[bohrRadius.length - 1]);
+        bohrRadius.pop();
+      }
+
+      // Create the two protons
+      particles[0] = new Particle(
+        1.6726219e-27, 
+        2 * 1.602176634e-19,
+        0.5, 
+        new THREE.Vector3(0, 0, 0), 
+        new THREE.Vector3(0, 0 ,0),
+        "proton"
+      );
+      particles[0].index = 1;   
+      particleEl[0] = document.createElement('a-sphere'); 
+      particleEl[0].setAttribute('radius', 18);
+      //particleEl[0].setAttribute('scale', { x: 1, y: 0.5, z: 0.5 });
+      particleEl[0].setAttribute('color', 'red');
+      sceneEl.appendChild(particleEl[0]); 
+      bohrRadius[0] = document.createElement('a-ring');   
+      bohrRadius[0].setAttribute('radius-inner', a0 * 9.99e11);
+      bohrRadius[0].setAttribute('radius-outer', a0 * 1.01e12);
+      bohrRadius[0].setAttribute('color', 'grey');  
+      sceneEl.appendChild(bohrRadius[0]);
+
+      // Create the electron
+      particles[1] = new Particle(
+        9.10938356e-31, 
+        -1.602176634e-19, 
+        0.5, 
+        new THREE.Vector3(0, 0, 0), 
+        new THREE.Vector3(0.5 * a0, 0, 0),
+        "electron"
+      );
+      particles[1].index = 3;
+      particleEl[1] = document.createElement('a-sphere');
+      particleEl[1].setAttribute('radius', 5);
+      particleEl[1].setAttribute('color', 'blue');
+      particleEl[1].object3D.position.set(5.2918, 0, 0); 
+      sceneEl.appendChild(particleEl[1]);
+
+      // Add event listeners to the particles
+      for (let i in particleEl) {
+        particleEl[i].index = i;
+        particleEl[i].addEventListener('click', (event) => {
+          indexOfParticle = particleEl[i].index;
+          document.getElementById("Xs").value = particleEl[i].getAttribute('position').x.toString();
+          document.getElementById("Ys").value = particleEl[i].getAttribute('position').y.toString();
+          document.getElementById("Zs").value = particleEl[i].getAttribute('position').z.toString();
+        });
+      }
+
+      // Set the atomic number (Z) to 2
+      Z = 2;
+      // Set the atom name to "HE Cation"
+      atom = "HE Cation";
+    }
+
+    /**
+     * Creates a Helium Atom (HE)
+     * Initializes the scene with two protons and two electrons
+     * @function createHEAtom
+     */
+    function createHEAtom() {
+      // Stop animation and reset button text
+      isAnimationRunning = false;
+      button.textContent = "Start";
+
+      // Clear existing particles and Bohr radius rings from the scene
+      while (particles.length > 0) {
+        particles.pop();
+        sceneEl.removeChild(particleEl[particleEl.length - 1]);
+        particleEl.pop();
+      }
+
+      while (bohrRadius.length > 0) {
+        sceneEl.removeChild(bohrRadius[bohrRadius.length - 1]);
+        bohrRadius.pop();
+      }
+
+      // Create the first proton
+      particles[0] = new Particle(
+        1.6726219e-27,
+        2 * 1.602176634e-19,
+        0.5,
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(0, 0, 0),
+        "proton"
+      );
+      particles[0].index = 1;
+      particleEl[0] = document.createElement('a-sphere');
+      particleEl[0].setAttribute('radius', 18);
+      particleEl[0].setAttribute('color', 'red');
+      sceneEl.appendChild(particleEl[0]);
+
+      // Create Bohr radius ring for the proton
+      bohrRadius[0] = document.createElement('a-ring');
+      bohrRadius[0].setAttribute('radius-inner', a0 * 9.99e11);
+      bohrRadius[0].setAttribute('radius-outer', a0 * 1.01e12);
+      bohrRadius[0].setAttribute('color', 'grey');
+      sceneEl.appendChild(bohrRadius[0]);
+
+      // Create the first electron
+      particles[1] = new Particle(
+        9.10938356e-31,
+        -1.602176634e-19,
+        0.5,
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(0.5 * a0, 0, 0),
+        "electron"
+      );
+      particles[1].index = 3;
+      particleEl[1] = document.createElement('a-sphere');
+      particleEl[1].setAttribute('radius', 5);
+      particleEl[1].setAttribute('color', 'blue');
+      particleEl[1].object3D.position.set(5.2918, 0, 0);
+      sceneEl.appendChild(particleEl[1]);
+
+      // Create the second electron
+      particles[2] = new Particle(
+        9.10938356e-31,
+        -1.602176634e-19,
+        0.5,
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(-0.5 * a0, 0, 0),
+        "electron"
+      );
+      particles[2].index = 3;
+      particleEl[2] = document.createElement('a-sphere');
+      particleEl[2].setAttribute('radius', 5);
+      particleEl[2].setAttribute('color', 'blue');
+      particleEl[2].object3D.position.set(5.2918, 0, 0);
+      sceneEl.appendChild(particleEl[2]);
+
+      // Add event listeners to the particles for interaction
+      for (let i in particleEl) {
+        particleEl[i].index = i;
+        particleEl[i].addEventListener('click', (event) => {
+          indexOfParticle = particleEl[i].index;
+          document.getElementById("Xs").value = particleEl[i].getAttribute('position').x.toString();
+          document.getElementById("Ys").value = particleEl[i].getAttribute('position').y.toString();
+          document.getElementById("Zs").value = particleEl[i].getAttribute('position').z.toString();
+        });
+      }
+
+      // Set atomic number and atom name
+      Z = 2;
+      atom = "HE Atom";
+    }
+
+    // H-atom as default
+    createHAtom();
+
+
+
+    /**
+     * Change the atom model
+     * @param {String} atomModel - HAtom, H2Cation, HAnion, HECation, HEAtom
+     */
+    function changeAtomModel(atomModel) {
+      // Change the atom model based on the option selected
+      switch (atomModel) {
+        case "HAtom":
+          createHAtom();
+          break;
+        case "H2Cation":
+          createH2Cation();
+          break;
+        case "HAnion":
+          createHAnion();
+          break;
+        case "HECation":
+          createHECation();
+          break;
+        case "HEAtom":
+          createHEAtom();
+          break;
+        default:
+          console.log("Invalid atom model");
+      }
+    }
+
+
+
+    /**
+     * Change the number of protons in the atom
+     * @param {Number} a - the change in the number of protons
+     */
+    function changeCountProton(a) {
+      // if the number of protons is increasing
+      if (a > 0) {
+        // increase the number of protons
+        countProton++;
+        // generate a random position for the new proton
+        let newX = (Math.random() * 1e-11);  
+        // create a new particle
+        particles.push( 
+          new Particle(
+            1.6726219e-27, 
+            1.602176634e-19, 
+            0.5, new THREE.Vector3(0, 0, 0), 
+            new THREE.Vector3(0, 0, 0),
+            "proton"
+          )
+        ); 
+        // set the position of the new particle
+        particles[particles.length-1].cartPos.x = newX;
+        // convert the position to polar coordinates
+        const p = particles[particles.length-1].cartPos
+        particles[particles.length-1].polarPos = cartInPolar(p.x, p.y, p.z);
+
+        // create a new sphere to represent the proton
+        const newProton = document.createElement('a-sphere');        
+        particleEl.push(newProton);
+        sceneEl.appendChild(newProton);
+        // set the radius and color of the sphere
+        newProton.setAttribute('radius', 6);
+        newProton.setAttribute('color', 'red');
+
+        // create a new ring to represent the Bohr radius
+        const newBohr = document.createElement('a-ring');        
+        bohrRadius.push(newBohr);
+        sceneEl.appendChild(newBohr);
+        // set the radius and color of the ring
+        newBohr.setAttribute('radius-inner', a0 * 9.99e11);
+        newBohr.setAttribute('radius-outer', a0 * 1.01e12);
+        newBohr.setAttribute('color', 'grey');
+        newBohr.setAttribute('opacity', 0.2);
+        newBohr.setAttribute('ignore-ray', true);
+
+        // set the position of the sphere and ring
+        const pr = p.clone().multiplyScalar(1e12);
+
+        newProton.object3D.position.set(pr.x, pr.y, pr.z);  
+        newBohr.object3D.position.set(pr.x, pr.y, pr.z);
+
+      // if the number of protons is decreasing
+      } else if (a < 0 && countProton > 0) {
+        // decrease the number of protons
+        countProton--;
+        // remove the last proton
+        const removedProton = bohrRadius.pop();
+        sceneEl.removeChild(removedProton);
+        // remove the corresponding particle
+        for (let i = particles.length -1; i >=0; i--){
+          if (particles[i].type === "proton"){
+            particles.splice(i, 1);
+            sceneEl.removeChild(particleEl[i])
+            particleEl.splice(i, 1);
+            break;
+          }
+        }
+      }
+
+      // update the display
+      particleEl.forEach((element, i) => {
+          element.index = i;
+          element.addEventListener('click', () => {
+            indexOfParticle = element.index;
+            const position = element.getAttribute('position');
+            document.getElementById("Xs").value = position.x.toString();
+            document.getElementById("Ys").value = position.y.toString();
+            document.getElementById("Zs").value = position.z.toString();
+          });               
+      });
+      
+      // update the display of the number of protons
+      document.getElementById("DispCountProton").innerHTML = countProton;
+    }    
+
+    /**
+     * Changes the number of electrons in the model.
+     * @param {number} a Change in the number of electrons.
+     */
+    function changeCountElectron(a) {
+        if (a > 0) {
+            // increase the number of electrons
+            countElectron++;
+            // generate a random position for the new electron
+            let newX = (Math.random() * 2 *a0) - (a0);  
+            let newY = (Math.random() * 2 *a0) - (a0); 
+
+            // create a new electron
+            particles.push(
+                new Particle(
+                    9.10938356e-31, 
+                    -1.602176634e-19, 
+                    0.5, 
+                    new THREE.Vector3(0, 0, 0), 
+                    new THREE.Vector3(3, 3, 0),
+                    "electron"
+                )
+            );
+            // set the new electron's position
+            particles[particles.length-1].cartPos.x = newX;
+            particles[particles.length-1].cartPos.y = newY;
+            const p = particles[particles.length-1].cartPos;
+            // set the new electron's polar position
+            particles[particles.length-1].polarPos = cartInPolar(p.x, p.y, p.z);
+
+            // create a new sphere for the electron
+            const newElectron = document.createElement('a-sphere');
+            particleEl.push(newElectron);
+            sceneEl.appendChild(newElectron);
+            newElectron.setAttribute('radius', 1.5);
+            newElectron.setAttribute('color', 'blue');
+            const pr = p.clone().multiplyScalar(1e12)
+            newElectron.object3D.position.set(pr.x, pr.y, pr.z);      
+        } 
+
+        else if (a < 0 && countElectron > 0) {
+            // decrease the number of electrons
+            countElectron--;
+            // remove the last electron
+            for (let i = particles.length -1; i >=0; i--){
+                if (particles[i].type === "electron"){
+                    particles.splice(i, 1);
+                    sceneEl.removeChild(particleEl[i])
+                    particleEl.splice(i, 1);
+                    break;
+                }
+            }
+        }
+
+        // update the display of the particles
+        particleEl.forEach((el, i) => {
+            el.index = i;
+            el.addEventListener('click', () => {
+                indexOfParticle = i;
+                const position = el.object3D.position;
+                document.getElementById("Xs").value = position.x.toString();
+                document.getElementById("Ys").value = position.y.toString();
+                document.getElementById("Zs").value = position.z.toString();
+                console.log(particles[i]);
+            });
+        });
+
+        // update the display of the number of electrons
+        document.getElementById("DispCountElectron").innerHTML = countElectron;
+    }  
+
+
+
+    // Updates the x-position of the particle at the current indexp
+    inputField.X.addEventListener('keypress', (event) => {
+        if (event.key === 'Enter') {
+            const posx = inputField.X.value;
+            particles[indexOfParticle].cartPos.x = posx * 1e-12;
+        }
+    });
+
+    // Updates the y-position of the particle at the current indexp
+    inputField.Y.addEventListener('keypress', (event) => {
+        if (event.key === 'Enter') {
+            const posy = inputField.Y.value;
+            particles[indexOfParticle].cartPos.y = posy * 1e-12;
+        }
+    });
+    
+    // Updates the z-position of the particle at the current indexp
+    inputField.Z.addEventListener('keypress', (event) => {
+        if (event.key === 'Enter') {
+            const posz = inputField.Z.value;
+            particles[indexOfParticle].cartPos.z = posz * 1e-12;
+        }
+    });
+  
+    /*  inputField.Veff.addEventListener('keypress', (event) => {
+        if (event.key === 'Enter') {
+            const Veff = parseFloat(inputField.Veff.value);
+
+            if(atom === "H Atom"){
+              particles[1].cartPos.x = (-a0 * (Math.sqrt(Veff+1)+1))/Veff;
+              //particles[1].cartPos.x = (a0 * (Math.sqrt(Veff+1)-1))/Veff;
+            }
+
+            else if(atom === "H2 Cation"){
+              particles[0].cartPos.x = (-a0 * 1.4141* (Math.sqrt(Veff+1.2842)+1.1332))/Veff;
+              particles[1].cartPos.x = (a0 * 1.4141* (Math.sqrt(Veff+1.2842)+1.1332))/Veff;
+              //particles[0].cartPos.x = (-a0 * 1.4141* (Math.sqrt(Veff+1.2842)-1.1332))/Veff;
+              //particles[1].cartPos.x = (a0 * 1.4141* (Math.sqrt(Veff+1.2842)-1.1332))/Veff;
+            }
+
+            else if(atom === "H Anion"){
+              particles[2].cartPos.x = (-a0 * 1.4141* (Math.sqrt(Veff+1.3169)+1.1476))/Veff;
+              particles[1].cartPos.x = (a0 * 1.4141* (Math.sqrt(Veff+1.3169)+1.1476))/Veff;
+              //particles[2].cartPos.x = (-a0 * 1.4141* (Math.sqrt(Veff+1.3169)-1.1476))/Veff;
+              //particles[1].cartPos.x = (a0 * 1.4141* (Math.sqrt(Veff+1.3169)-1.1476))/Veff;
+
+            }
+
+            else if(atom === "HE Cation"){
+              particles[1].cartPos.x = (-a0 * (Math.sqrt(Veff+4)+2))/Veff;
+              //particles[1].cartPos.x = (a0 * (Math.sqrt(Veff+1)-1))/Veff;
+            }
+
+            else if(atom === "HE Atom"){
+              particles[2].cartPos.x = (-a0 * 1.4141* (Math.sqrt(Veff+5.8068)+2.4097))/Veff;
+              particles[1].cartPos.x = (a0 * 1.4141* (Math.sqrt(Veff+5.8068)+2.4097))/Veff;
+              //particles[2].cartPos.x = (-a0 * 1.4141* (Math.sqrt(Veff+5.8068)-2.4097))/Veff;
+              //particles[1].cartPos.x = (a0 * 1.4141* (Math.sqrt(Veff+5.8068)-2.4097))/Veff;
+            }
+
+            else{}
+
+        }
+    });
+    */
+
+
+
+    /**
+     * Toggles the physical "ansatz" of the model. The "ansatz" is the
+     * mathematical assumption made in the model about the shape of the
+     * atomic orbitals. The two possible "ansatze" are the 1s and 2p
+     * orbitals.
+     * @function changeAnsatz
+     */
+    function changeAnsatz() {
+      isAngularMomentum = !isAngularMomentum;
+    }
+    
+    /**
+     * Increases the energy-level of the electron in the H atom by one.
+     * If the angular momentum is "on", it also increases the angular momentum
+     * of the electron by one.
+     * @function sp1
+     */
+    function incrementEnergyLevel() {
+      if(atom === "H Atom"){  
+        if(isAngularMomentum){     
+          // increase the distance of the electron from the proton by a factor of 4
+          particles[1].cartPos.multiplyScalar(4);       
+          // calculate a vector perpendicular to the connection vector between the electron and the proton
+          const connectionVector = particles[0].cartPos.clone().sub(particles[1].cartPos);
+          const perpendicularVector = new THREE.Vector3(-connectionVector.y, connectionVector.x, 0);   
+          
+          // normalize the perpendicular vector and multiply it by 1e-12 to get the correct units
+          perpendicularVector.normalize().multiplyScalar(1e-12);
+          
+          // add the perpendicular vector to the velocity of the electron
+          particles[1].velocity.add(perpendicularVector);
+        }
+        // increase the energy level (n) of the electron by one
+        N++;
+        // increase the angular momentum (l) of the electron by one
+        L++;
+      }
+
+      /*
+      else if(atom === "H2 Cation"){   
+        // increase the velocity of the electron in the y direction by 1e-12
+        particles[2].velocity.y =  1e-12;
+      }
+
+      else if(atom === "H Anion"){  
+        // increase the velocity of the electron in the y direction by 1e-12
+        particles[1].velocity.y =  1e-12;
+        // decrease the velocity of the electron in the y direction by 1e-12
+        particles[2].velocity.y =  -1e-12;
+      }
+
+      else if(atom === "HE Cation"){    
+        // increase the velocity of the electron in the y direction by 1e-12
+        particles[1].velocity.y = 1e-12;   
+      }
+
+      else if(atom === "HE Atom"){ 
+        // increase the velocity of the electron in the y direction by 1e-12
+        particles[1].velocity.y =  1e-12;
+        // decrease the velocity of the electron in the y direction by 1e-12
+        particles[2].velocity.y =  -1e-12;
+      }
+
+      else{}
+      */
+
+      // change the background color of the scene depending on the energy level
+      if (N == 1) {
+        radiation = 1;
+      } else if (N == 2) { 
+        radiation= 0.999905
+        cameraEl.setAttribute('position', {x: 0, y: 0, z: 1200});
+      } else if (N == 3) { 
+        radiation = 0.99995
+        cameraEl.setAttribute('position', {x: 0, y: 0, z: 2000});
+      }
+
+      // update the energy level and angular momentum in the UI
+      document.getElementById("nLvl").innerHTML++;
+      document.getElementById("lLvl").innerHTML++;
+    }
+
+    /**
+     * Lower the energy level
+     * Decrease the energy level by one if it is greater than 1
+     * Decrease the angular momentum if the energy level is also decreased
+     * Update the UI to reflect the new energy level and angular momentum
+     */
+    function decrementEnergyLevel() {
+      // only allow the energy level to be decreased if it is greater than 1
+      if (parseInt(document.getElementById("nLvl").innerHTML) > 1) {
+        // decrease the energy level
+        N--;
+        // if the energy level is decreased, also decrease the angular momentum if it is equal to the energy level
+        if (L == N) {
+          L--;  
+          document.getElementById("lLvl").innerHTML--;
+        }
+
+        // update the UI to reflect the new energy level and angular momentum
+        document.getElementById("nLvl").innerHTML = parseInt(document.getElementById("nLvl").innerHTML) - 1;
+      }
+
+      // update the radiation level based on the energy level
+      if ( N == 1 ) { 
+        radiation = 1
+        cameraEl.setAttribute('position', {x: 0, y: 0, z: 800});
+      } else if ( N == 2 ) { 
+        radiation= 0.999905
+        cameraEl.setAttribute('position', {x: 0, y: 0, z: 1200});
+      } else if ( N == 3 ) { 
+        radiation = 0.999999
+        cameraEl.setAttribute('position', {x: 0, y: 0, z: 2000});
+      }
+    }
+   
+
+
+    /**
+     * Increase the angular momentum
+     * Increase the angular momentum by one if it is less than the energy level
+     * Update the UI to reflect the new angular momentum
+     */
+    function incrementAngularMomentum(){
+      // only allow the angular momentum to be increased if it is less than the energy level
+      if (L < N - 1) {
+        // increase the angular momentum
+        L++;
+        // update the UI to reflect the new angular momentum
+        document.getElementById("lLvl").innerHTML++;
+      } else {
+        // throw an error if the angular momentum is already at the maximum
+        throw new Error("Invalid spin");
+      }
+    }
+
+    /**
+     * Decreases the angular momentum (L) by one if it is greater than zero.
+     * Updates the UI to reflect the new angular momentum.
+     * Throws an error if the angular momentum is already zero.
+     * @function lm1
+     */
+    function decrementAngularMomentum() {
+      // check if angular momentum is greater than zero
+      if (L > 0) {
+        // decrease angular momentum
+        L--;
+        // update the UI to reflect the new angular momentum
+        document.getElementById("lLvl").innerHTML--;
+      } else {
+        // throw an error if angular momentum is already zero
+        throw new Error("Invalid spin");
+      }
+    }
+
+
+
+    /**
+     * Sets the velocity of all particles to zero.
+     * @function zeroV
+     */
+    function setVelocitiesToZero(){
+      // iterate over all particles and set their velocity to zero
+      particles.forEach(particle => particle.velocity.set(0, 0, 0));
+
+      switch (atom) {
+        case "H2 Cation":
+          particles[2].velocity.x = 1.14e-13;
+          break;
+        case "H Anion":
+          particles[1].velocity.x = -6.35e-14;
+          particles[2].velocity.x = 6.35e-14;
+          break;
+        case "HE Atom":
+          particles[1].velocity.x = 7.35e-13;
+          particles[2].velocity.x = -7.35e-13;
+          break;
+        default:
+          throw new Error(`Invalid atom: ${atom}`);
+      }
+    }
+
+
+
+    /**
+     * Changes between locked nucleus and movable nucleus
+     * Toggles the `isPlocked` variable to switch between a locked nucleus and a movable nucleus
+     * @function lockNucleus
+     */
+    function lockNucleus(){
+      // toggle the isPlocked variable
+      isNucleusLocked = !isNucleusLocked;
+    }
+
+
+
+    /**
+     * Toggles the path recording on or off.
+     * @function startRecord
+     */
+    function startRecord(){
+      // toggle the RecordPath variable
+      isRecordPath = !isRecordPath;
+
+      // change the button text depending on the state
+      if (isRecordPath) {
+        pathButton.textContent = "⏸";
+      } else {
+        pathButton.textContent = "⏵";
+      }
+    }
+
+
+
+    /**
+     * Deletes all recorded paths from the scene.
+     * This function is called when the user clicks the "Delete Path" button.
+     * @function deletePath
+     */
+    function deletePath(){
+      // get all recorded paths from the scene
+      const circles = document.querySelectorAll('a-circle');
+
+      // iterate over all paths and remove them from the scene
+      circles.forEach(circle => circle.parentNode.removeChild(circle));
+    }
+
+
+
+    // calculation of the model
+    function animation() {
+      // calculate and display distance and energy
+      const calculateDistanceAndEnergy = (particles, atom) => {
+        switch (atom) {
+          case "H Atom":
+            const length = particles[1].cartPos.distanceTo(particles[0].cartPos);
+            const relLen = length / a0;
+            document.getElementById("Distance").innerHTML = relLen.toFixed(3) + ' a0';
+            const energy = (a0**2 / length**2) - (2 * a0 / length);
+            document.getElementById("Energy").innerHTML = energy.toFixed(3) + ' Ry';
+            break;
+          case "H2 Cation":
+            const length1 = particles[2].cartPos.distanceTo(particles[1].cartPos);
+            const length2 = particles[2].cartPos.distanceTo(particles[0].cartPos);
+            const relLen2 = length1 / a0;
+            document.getElementById("Distance").innerHTML = relLen2.toFixed(3) + ' a0';
+            const energy2 = (a0**2 / length1**2) - (2 * a0 / length1) + (a0**2 / length2**2) - (2 * a0 / length2) + (2 * a0 * 0.79473 / (length1 + length2));
+            document.getElementById("Energy").innerHTML = energy2.toFixed(3) + ' Ry';
+            break;
+          case "H Anion":
+            const length3 = particles[1].cartPos.distanceTo(particles[0].cartPos);
+            const length4 = particles[2].cartPos.distanceTo(particles[0].cartPos);
+            const relLen4 = length3 / a0;
+            document.getElementById("Distance").innerHTML = relLen4.toFixed(3) + ' a0';
+            const energy4 = (a0**2 / length3**2) - (2 * a0 / length3) + (a0**2 / length4**2) - (2 * a0 / length4) + (2 * a0 * 0.72644 / (length3 + length4));
+            document.getElementById("Energy").innerHTML = energy4.toFixed(3) + ' Ry';
+            break;
+          case "HE Cation":
+            const length5 = particles[1].cartPos.distanceTo(particles[0].cartPos);
+            const relLen5 = length5 / a0;
+            document.getElementById("Distance").innerHTML = relLen5.toFixed(3) + ' a0';
+            const energy5 = (a0**2 / length5**2) - (2 * 2 * a0 / length5);
+            document.getElementById("Energy").innerHTML = energy5.toFixed(3) + ' Ry';
+            break;
+          case "HE Atom":
+            const length6 = particles[1].cartPos.distanceTo(particles[0].cartPos);
+            const length7 = particles[2].cartPos.distanceTo(particles[0].cartPos);
+            const relLen7 = length6 / a0;
+            document.getElementById("Distance").innerHTML = relLen7.toFixed(3) + ' a0';
+            const energy7 = (2 * a0**2 / length6**2) - (4 * a0 * 1.95393 / length6) + (a0 / length6);
+            document.getElementById("Energy").innerHTML = energy7.toFixed(3) + ' Ry';
+            break;
+          default:
+            throw new Error("Invalid atom");
+        }
+      }
+
+      calculateDistanceAndEnergy(particles, atom);
+
+      // calculation of forces and resulting movements
+      if (isAnimationRunning) {
+        for (let i in particles) {
+          for (let j in particles) {
+            if (i !== j) {
+              // different vector between two particles
+              const distanceVector = new THREE.Vector3().copy(particles[j].cartPos).sub(particles[i].cartPos);
+              const distancePolar = cartInPolar(distanceVector.x, distanceVector.y, distanceVector.z); 
+              const perpendicularVector = new THREE.Vector3(-distanceVector.y, distanceVector.x, 0);
+              
+              // electric Force
+              let electricForce = ( -Z * particles[i].charge * particles[j].charge) 
+                                  / (k * distancePolar[0] * distancePolar[0]); 
+              let kratzerForce = 0;
+              let spinForce = 0;
+              let Frad = 0;
+
+              // "kratzer" or repulsive Force
+              if(particles[i].charge * particles[j].charge < 0){ 
+                kratzerForce = (particles[i].charge * particles[j].charge  * a0) / (k * distancePolar[0] * distancePolar[0] *distancePolar[0]);
+                if(!isAngularMomentum){
+                spinForce = (particles[i].charge * particles[j].charge * (L * ( L+ 1))* a0) / (k * distancePolar[0] * distancePolar[0] *distancePolar[0]);
+                }
+              } else {}
+
+              /*
+              if(particles[i].charge * particles[j].charge > 0){
+                if(atom==="HE Atom"){
+                  kratzerForce = (particles[i].charge * particles[j].charge * a0 * (-0.836709)) / (k * distancePolar[0] * distancePolar[0] *distancePolar[0]) ;
+                  electricForce = electricForce * (0.836709);
+                }
+
+                else if(atom === "H2 Cation"){
+                electricForce = 0;
+                }
+              
+                else{}
+                }else{}*/
+
+              // radiation Force
+              if (particles[i].cartPos.x < particles[j].cartPos.x) {
+                Frad = - RadConst * particles[i].charge * particles[j].charge * particles[i].charge * particles[j].charge * particles[i].velocity.x /(k * distancePolar[0] * distancePolar[0] *distancePolar[0] * particles[i].mass)
+              } else if (particles[i].cartPos.x > particles[j].cartPos.x) {
+                Frad = RadConst * particles[i].charge * particles[j].charge * particles[i].charge * particles[j].charge * particles[i].velocity.x /(k * distancePolar[0] * distancePolar[0] *distancePolar[0] * particles[i].mass)
+              } else{}
+
+              // acceleration of the particle
+              const particleAcceleration = distanceVector.clone().normalize().multiplyScalar((electricForce+kratzerForce+(Frad*1e0))/particles[i].mass);
+              const spinAcceleration = perpendicularVector.clone().normalize().multiplyScalar(spinForce/(particles[i].mass));
+
+              // velocity of the particle
+              particles[i].velocity.add(particleAcceleration.multiplyScalar(1e-35)).add(spinAcceleration.multiplyScalar(1e-37));
+
+              // position of the particle
+              particles[i].cartPos.add(particles[i].velocity.multiplyScalar(radiation));
+              
+              // duration of one circulation on first excited state
+              if (particles[i].charge < 0 ){
+                const force = particleAcceleration.clone().multiplyScalar(particles[i].mass);
+                document.getElementById("fx").innerHTML = force.x;
+                document.getElementById("fy").innerHTML = force.y;
+                document.getElementById("fz").innerHTML = force.z;
+
+                if (countTime == 1){
+                  if ( angle.toFixed(2) == distancePolar[2].toFixed(2) ){
+                    console.log('ja')
+                    countTime = 2
+                  }
+
+                  timePassed = timePassed + 2 * 1.6 / 885 ;
+                  console.log(timePassed + " ps")
+                }
+
+                if(distanceVector.length() >= 4 * a0){
+                  if(countTime == 0){
+                    countTime = 1
+                    angle = distancePolar[2]
+                  }
+                }
+              }    
+            }
+          }
+        }
+      } else{}
+    }
+
+
+
+    // interval for repeating animation
+    let interval = setInterval(animation, dt);   
+
+    /**
+     * Changes interval for repeating animation
+     * @param {number} newDt interval time in ms
+     */
+    function changeInterval(newDt) {
+        // clear the old interval
+        clearInterval(interval);
+        // set the new interval
+        interval = setInterval(animation, Number(newDt));
+        // update the global variable dt
+        dt = Number(newDt);
+        //console.log(dt + typeof(dt))
+    }
+
+
+
+    /**
+     * Converts real coordinates into "image" coordinates and creates animation
+     * @param {int} frames - number of frames passed
+     */
+    function intoRealWorld() {
+      frames++;
+      let a = 0;
+
+      if(particles.length > 1){
+        for (let i in particles) {      
+          const pr = particles[i].cartPos.clone().multiplyScalar(1e12);
+
+          // set positions of particles in the scene
+          particleEl[i].object3D.position.set(pr.x, pr.y, pr.z);
+
+          // set positions of protons and electrons in the scene
+          if (particles[i].type === 'proton') {
+            bohrRadius[a].object3D.position.set(pr.x, pr.y, pr.z);
+            a++;
+          } else if (particles[i].type === "electron" && i == 1) {
+            document.getElementById("posx1").innerHTML = pr.x.toFixed(3);
+            document.getElementById("y1").innerHTML = pr.y.toFixed(3);
+            document.getElementById("z1").innerHTML = pr.z.toFixed(3);
+          } else if (particles[i].type === "electron" && i ==2 ) {
+            document.getElementById("x2").innerHTML = pr.x.toFixed(3);
+            document.getElementById("y2").innerHTML = pr.y.toFixed(3);
+            document.getElementById("z2").innerHTML = pr.z.toFixed(3);
+          } else if (particles[i].type === "proton" && i == 1) {
+            document.getElementById("posx1").innerHTML = NaN;
+            document.getElementById("y1").innerHTML = NaN;
+            document.getElementById("z1").innerHTML = NaN;
+          } else if(particles[i].type === "proton" && i == 2 || particles.length < 3) {
+            document.getElementById("x2").innerHTML = NaN;
+            document.getElementById("y2").innerHTML = NaN;
+            document.getElementById("z2").innerHTML = NaN;
+          } else {}
+
+          // record path of particles if requested
+          if(frames % 5 == 0 & isRecordPath == true){
+            if(particles[i].type === 'electron'){
+              const point = document.createElement('a-circle'); 
+              point.setAttribute('radius', 1);
+              point.setAttribute('color', 'grey');
+              point.object3D.position.set(pr.x, pr.y, pr.z);
+              sceneEl.appendChild(point); 
+            }
+          }
+        }
+      }
+      // call the function again after the frame is rendered
+      requestAnimationFrame(intoRealWorld);
+    }
+
+    intoRealWorld();    
+
+</script>
+</body>
+</html>
