@@ -1,0 +1,105 @@
+body {
+font-family: Arial;
+color: black;
+}
+
+.split {
+width: 100%;
+position: fixed;
+z-index: 1;
+left: 0;
+overflow-y: hidden;
+padding-left: 20px;
+}
+
+.top {
+top: 0;
+height: 18%; /* Obere Hälfte */
+background-color: white;
+}
+
+.bottom {
+bottom: 0;
+height: 82%; /* Untere Hälfte */
+width: 100%;
+display: flex;
+background-color: white;
+}
+
+.bottom-left {
+width: 20%;
+height: 100%;
+background-color: white; /* Farbe für die linke Hälfte */
+}
+
+.bottom-right {
+width: 80%;
+height: 100%;
+background-color: white; /* Farbe für die rechte Hälfte */
+}
+
+table {
+font-family: arial, sans-serif;
+border-collapse: collapse;
+width: 100%;
+}
+
+td, th {
+border: 2px solid white; 
+text-align: left;
+padding: 8px;
+}
+
+tr:nth-child(even) {
+background-color: white; 
+}
+
+.inline-elements {
+display: inline-block;
+margin-right: 10px;
+}
+
+.button-container {
+display: inline-flex;
+flex-direction: column; /* Buttons werden vertikal gestapelt */
+}
+
+button {
+margin: 2px 0; /* Abstand zwischen den Buttons */
+}
+/* Stil für die LED (rot leuchtend) */
+.led {
+width: 20px;
+height: 20px;
+border-radius: 50%;
+background-color: #333; /* darker grey background */
+box-shadow: 0 0 5px rgba(255, 0, 0, 0.8);
+transition: background-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Wenn recording an ist (LED leuchtet rot) */
+.recording .led {
+background-color: #FF3737; /* bright red color */
+box-shadow: 0 0 10px rgba(255, 0, 0, 1);
+animation: pulse 1s infinite; /* add a pulsing effect */
+}
+
+/* pulsing effect animation */
+@keyframes pulse {
+0% {
+transform: scale(0.9);
+}
+70% {
+transform: scale(1.1);
+}
+100% {
+transform: scale(0.9);
+}
+}
+
+/* Stil für den Button */
+.container {
+display: flex;
+align-items: center;
+gap: 10px; /* Abstand zwischen LED und Button */
+}
