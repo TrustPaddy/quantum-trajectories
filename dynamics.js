@@ -1,3 +1,103 @@
+// Parameter-Objekt für alle Controls
+const settings = {
+  running: false,
+  velocitiesZero: () => setVelocitiesToZero(),
+  lockNucleus: false,
+  recordPath: false,
+  deletePath: () => deletePath(),
+  energyLevel: 1,
+  angularMomentum: 0,
+  atom: "HAtom",
+  electronCount: 1,
+  protonCount: 1,
+  larmor: false,
+  spin: false,
+  dt: 33.33,
+  posX: 0,
+  posY: 0,
+  posZ: 0
+};
+
+const gui = new dat.GUI({ width: 350 });
+
+const animFolder = gui.addFolder("Animation");
+animFolder.add(settings, "running").name("Running").onChange(value => {
+  if (value) {
+    startAnimation();
+  } else {
+    // stopAnimation() 
+  }
+});
+animFolder.add(settings, "velocitiesZero").name("v = 0");
+
+
+const atomFolder = gui.addFolder("Atom Model");
+atomFolder.add(settings, "atom", {
+  "H Atom": "HAtom",
+  "H2+ Cation": "H2Cation",
+  "H- Anion": "HAnion",
+  "He+ Cation": "HECation",
+  "He Atom": "HEAtom"
+}).name("Atom").onChange(value => {
+  changeAtomModel(value);
+});
+atomFolder.add(settings, "electronCount", 1, 10, 1).name("Electrons").onChange(val => {
+  changeCountElectron(val - settings.electronCount); 
+});
+atomFolder.add(settings, "protonCount", 1, 10, 1).name("Protons").onChange(val => {
+  changeCountProton(val - settings.protonCount); 
+});
+
+const quantumFolder = gui.addFolder("Quantum States");
+// quantumFolder.add(settings, "energyLevel", 1, 10, 1).name("Energy Level").onChange(val => {
+//   document.getElementById("nLvl").innerText = val;
+// });
+// quantumFolder.add(settings, "angularMomentum", 0, 10, 1).name("Angular Momentum").onChange(val => {
+//   document.getElementById("lLvl").innerText = val;
+// });
+quantumFolder.add(settings, "energyLevel", 1, 10).step(1).name("Energy Level");
+quantumFolder.add(settings, "angularMomentum", 0, 10).step(1).name("Angular Momentum");
+
+const physicsFolder = gui.addFolder("Physics Options");
+physicsFolder.add(settings, "lockNucleus").name("Lock Nucleus");
+physicsFolder.add(settings, "larmor").name("Larmor Precession");
+physicsFolder.add(settings, "spin").name("Spin");
+
+const pathFolder = gui.addFolder("Path Recording");
+pathFolder.add(settings, "recordPath").name("Record Path").onChange(value => {
+  if (value) {
+    startRecord();
+  } else {
+    // evtl. stopRecord()
+  }
+});
+pathFolder.add(settings, "deletePath").name("Delete Path");
+
+const speedFolder = gui.addFolder("Simulation Speed");
+speedFolder.add(settings, "dt", { Normal: 33.33, Fast: 6.67, Slow: 166.67 }).name("dt").onChange(value => {
+  changeInterval(value);
+});
+
+const posFolder = gui.addFolder("Initial Position");
+posFolder.add(settings, "posX", -100, 100, 1).name("X").onChange(val => {
+  document.getElementById("Xs").value = val;
+});
+posFolder.add(settings, "posY", -100, 100, 1).name("Y").onChange(val => {
+  document.getElementById("Ys").value = val;
+});
+posFolder.add(settings, "posZ", -100, 100, 1).name("Z").onChange(val => {
+  document.getElementById("Zs").value = val;
+});
+
+animFolder.close();
+atomFolder.close();
+quantumFolder.close();
+physicsFolder.close();
+pathFolder.close();
+speedFolder.close();
+posFolder.close();
+
+
 const sceneEl = document.querySelector('a-scene');
 const cameraEl = document.querySelector('#camera');
 const button = document.getElementById("myButton");

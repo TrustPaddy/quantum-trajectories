@@ -2,7 +2,6 @@ body {
 font-family: Arial;
 color: black;
 }
-
 .split {
 width: 100%;
 position: fixed;
@@ -11,13 +10,11 @@ left: 0;
 overflow-y: hidden;
 padding-left: 20px;
 }
-
 .top {
 top: 0;
 height: 18%; /* Obere Hälfte */
 background-color: white;
 }
-
 .bottom {
 bottom: 0;
 height: 82%; /* Untere Hälfte */
@@ -25,13 +22,11 @@ width: 100%;
 display: flex;
 background-color: white;
 }
-
 .bottom-left {
 width: 20%;
 height: 100%;
 background-color: white; /* Farbe für die linke Hälfte */
 }
-
 .bottom-right {
 width: 80%;
 height: 100%;
@@ -53,12 +48,10 @@ padding: 8px;
 tr:nth-child(even) {
 background-color: white; 
 }
-
 .inline-elements {
 display: inline-block;
 margin-right: 10px;
 }
-
 .button-container {
 display: inline-flex;
 flex-direction: column; /* Buttons werden vertikal gestapelt */
@@ -76,13 +69,17 @@ background-color: #333; /* darker grey background */
 box-shadow: 0 0 5px rgba(255, 0, 0, 0.8);
 transition: background-color 0.3s ease, box-shadow 0.3s ease;
 }
-
 /* Wenn recording an ist (LED leuchtet rot) */
 .recording .led {
 background-color: #FF3737; /* bright red color */
 box-shadow: 0 0 10px rgba(255, 0, 0, 1);
 animation: pulse 1s infinite; /* add a pulsing effect */
 }
+.dg.ac {
+  z-index: 9999 !important;
+  position: fixed !important;
+}
+
 
 /* pulsing effect animation */
 @keyframes pulse {
@@ -96,7 +93,6 @@ transform: scale(1.1);
 transform: scale(0.9);
 }
 }
-
 /* Stil für den Button */
 .container {
 display: flex;
