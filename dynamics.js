@@ -1,1214 +1,638 @@
 "use strict";
 
-// -------------------------------------------------------------
-// Constants & utilities
-// -------------------------------------------------------------
-/**
- * Physical constants used in the simulation.
- * @constant
- * @type {Object}
- * @property {number} e0 - Electric constant (8.8541878128e-12 C^2/N m^2)
- * @property {number} a0 - Bohr radius (5.29177210903e-11 m)
- * @property {number} c - Speed of light (2.99792e8 m/s)
- */
-const PHYS = Object.freeze({
-  e0: 8.8541878128e-12,
-  a0: 5.29177210903e-11,
-  c: 2.99792e8,
+// ═════════════════════════════════════════════════════════════
+//  ATOMIC UNITS (a.u.)
+//  ───────────────────
+//  ℏ = mₑ = e = 4πε₀ = 1
+//  Length:  1 a.u. = a₀ = 0.529 177 Å
+//  Mass:   1 a.u. = mₑ
+//  Charge: 1 a.u. = e
+//  Energy: 1 a.u. = Eₕ = 27.211 eV  (1 Ry = 0.5 Eₕ)
+//  Time:   1 a.u. = ℏ/Eₕ ≈ 2.419 × 10⁻¹⁷ s
+//
+//  Coulomb force:  F = qi·qj / r²   (no 4πε₀ needed)
+//  Kratzer term:   F = qi·qj / r³
+//
+//  All internal positions, velocities, accelerations in a.u.
+//  Conversion to SI / scene units only at boundaries.
+// ═════════════════════════════════════════════════════════════
+
+// ─── SI constants (boundary conversions only) ────────────────
+const SI = Object.freeze({
+  a0:   5.29177210903e-11,
+  me:   9.10938370e-31,
+  mp:   1.6726219e-27,
+  e:    1.602176634e-19,
+  c:    2.99792458e8,
+  hbar: 1.054571817e-34,
 });
 
-/**
- * Coulomb constant (4 * pi * e0)
- * @constant
- * @type {number}
- */
-const K = 4 * Math.PI * PHYS.e0;
+const MP_AU = SI.mp / SI.me;                         // proton mass in a.u. ≈ 1836.15
+const SCENE_SCALE = SI.a0 * 1e12;                    // 1 a₀ → ~52.917 scene units
+const C_AU = SI.c * SI.me * SI.a0 / SI.hbar;         // c in a.u. ≈ 137.036
+const RAD_CONST_AU = 2 / (3 * C_AU * C_AU * C_AU);   // radiation prefactor
+const V_AU = SI.hbar / (SI.me * SI.a0);              // 1 a.u. velocity in m/s
 
-/**
- * Radiation constant (2 / (3 * c^3 * c^3 * c^3))
- * @constant
- * @type {number}
- */
-const RAD_CONST = 2 / (3 * PHYS.c * PHYS.c * PHYS.c);
-
-/**
- * Enum for atomic models.
- * @constant
- * @type {Object}
- * @property {string} HAtom - H atom
- * @property {string} H2Cation - H2+ cation
- * @property {string} HAnion - H- anion
- * @property {string} HECation - He+ cation
- * @property {string} HEAtom - He atom
- */
 const AtomModel = Object.freeze({
-  HAtom: "H Atom",
-  H2Cation: "H2 Cation",
-  HAnion: "H Anion",
-  HECation: "HE Cation",
-  HEAtom: "HE Atom",
+  HAtom: "H Atom", H2Cation: "H2 Cation", HAnion: "H Anion",
+  HECation: "HE Cation", HEAtom: "HE Atom",
 });
 
-/**
- * Clamps a number between a minimum and maximum value.
- * @param {number} n The number to clamp.
- * @param {number} min The minimum value.
- * @param {number} max The maximum value.
- * @returns {number} The clamped number.
- */
-function clamp(n, min, max) {
-  // Ensures that n is within the range [min, max].
-  return Math.max(min, Math.min(max, n));
-}
+// ─── Utilities ───────────────────────────────────────────────
+const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 
-/**
- * Converts a 3D cartesian coordinate (x, y, z) into a 3D polar coordinate (r, theta, phi).
- * @param {number} x The x coordinate of the cartesian point.
- * @param {number} y The y coordinate of the cartesian point.
- * @param {number} z The z coordinate of the cartesian point.
- * @returns {Array<number>} An array containing the polar coordinates [r, theta, phi].
- */
 function cartInPolar(x, y, z) {
-  // Calculate the radial distance (r) from the origin.
   const r = Math.sqrt(x * x + y * y + z * z) || 0;
-  
-  // Calculate the polar angle (theta) from the positive z-axis.
-  const theta = r === 0 ? 0 : Math.acos(z / r);
-  
-  // Calculate the azimuthal angle (phi) from the positive x-axis.
-  const phi = Math.atan2(y, x);
-  
-  return [r, theta, phi];
+  return [r, r === 0 ? 0 : Math.acos(clamp(z / r, -1, 1)), Math.atan2(y, x)];
 }
 
-/**
- * Creates a new HTML element with the given tag and attributes.
- * @param {string} tag The tag name of the HTML element to create.
- * @param {Object<string, string>} [attrs] An object containing key-value pairs of attributes to set on the element.
- * @returns {HTMLElement} The created HTML element.
- */
 function createEntity(tag, attrs) {
   const el = document.createElement(tag);
-  if (attrs) {
-    // Iterate over the given attributes and set them on the element.
-    for (const [k, v] of Object.entries(attrs)) {
-      el.setAttribute(k, v);
-    }
-  }
+  if (attrs) for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
   return el;
 }
 
+// ─── Reusable vector pool ────────────────────────────────────
+const _v = {
+  dv:   new THREE.Vector3(),
+  dir:  new THREE.Vector3(),
+  perp: new THREE.Vector3(),
+};
 
-const SAFE_DISTANCE = 1e-11; // ~1 Szene-Einheit, weil später mit 1e12 skaliert wird
-const MAX_TRIES = 50;
-/**
- * Try to find a non-colliding position for a new particle.
- * @param {string} type - either "proton" or "electron"
- * @param {() => THREE.Vector3} generator - function that returns a candidate position
- * @param {number} safetyDistance - minimal allowed distance to any existing particle (in simulation units)
- * @param {number} maxTries - how many random attempts before giving up
- * @returns {THREE.Vector3|null} a valid position or null if none found
- */
-function findNonCollidingPosition(type, generator, safetyDistance = SAFE_DISTANCE, maxTries = MAX_TRIES,) {
-  const radius1 = type === "electron" ? 5e-12 : 14e-12;
-  for (let attempt = 0; attempt < maxTries; attempt++) {
-    const candidate = generator();
+// ─── Collision helper (a.u.) ─────────────────────────────────
+function findNonCollidingPosition(type, generator) {
+  const r1 = type === "electron" ? 0.1 : 0.27;
+  for (let n = 0; n < 50; n++) {
+    const c = generator();
     let ok = true;
-
     for (const p of STATE.particles) {
-      const radius2 = p.type === "electron" ? 5e-12 : 14e-12;
-      if (p.cartPos.distanceTo(candidate) < safetyDistance + radius1 + radius2) {
-
-        console.log(p.cartPos.distanceTo(candidate))
-        console.log(p.type)
-
-        ok = false;
-        break;
-      }
+      const r2 = p.type === "electron" ? 0.1 : 0.27;
+      if (p.pos.distanceTo(c) < 0.2 + r1 + r2) { ok = false; break; }
     }
-
-    if (ok) return candidate;
+    if (ok) return c;
   }
-
-  console.warn("Could not find non-colliding position for new particle.");
+  console.warn("findNonCollidingPosition: gave up");
   return null;
 }
 
-// -------------------------------------------------------------
-// DOM & scene cache
-// -------------------------------------------------------------
+// ─── DOM cache ───────────────────────────────────────────────
 const UI = {
   Distance: document.getElementById("Distance"),
-  Energy: document.getElementById("Energy"),
-  posx1: document.getElementById("posx1"),
-  y1: document.getElementById("y1"),
+  Energy:   document.getElementById("Energy"),
+  posx1: document.getElementById("posx1"), 
+  y1: document.getElementById("y1"), 
   z1: document.getElementById("z1"),
-  x2: document.getElementById("x2"),
-  y2: document.getElementById("y2"),
+  x2: document.getElementById("x2"), 
+  y2: document.getElementById("y2"), 
   z2: document.getElementById("z2"),
-  nLvl: document.getElementById("nLvl"),
-  lLvl: document.getElementById("lLvl"),
+  nLvl: document.getElementById("nLvl"), 
+  lLvl: document.getElementById("lLvl"), 
+  mLvl: document.getElementById("mLvl"),
   DispCountElectron: document.getElementById("DispCountElectron"),
-  DispCountProton: document.getElementById("DispCountProton"),
-  Xs: document.getElementById("Xs"),
-  Ys: document.getElementById("Ys"),
+  DispCountProton:   document.getElementById("DispCountProton"),
+  Xs: document.getElementById("Xs"), 
+  Ys: document.getElementById("Ys"), 
   Zs: document.getElementById("Zs"),
-  led: document.getElementById("led"),
+  led: document.getElementById("led"), 
   myButton: document.getElementById("myButton"),
   pathButton: document.getElementById("PathButton"),
-  fx: document.getElementById("fx"),
-  fy: document.getElementById("fy"),
+  fx: document.getElementById("fx"), 
+  fy: document.getElementById("fy"), 
   fz: document.getElementById("fz"),
+  relaxRead: document.getElementById("relaxRead"),
+};
+const SCENE = { 
+  el: document.querySelector("a-scene"), 
+  camera: document.querySelector("#camera") 
 };
 
-const SCENE = {
-  sceneEl: document.querySelector("a-scene"),
-  cameraEl: document.querySelector("#camera"),
-};
-
-// -------------------------------------------------------------
-// Types & state
-// -------------------------------------------------------------
+// ─── Particle (all in a.u.) ─────────────────────────────────
 class Particle {
-  constructor(mass, charge, spin, velocity, cartPos, type) {
-    this.mass = mass;
-    this.charge = charge;
-    this.spin = spin;
-    this.velocity = velocity; // THREE.Vector3
-    this.cartPos = cartPos;   // THREE.Vector3
-    this.polarPos = cartInPolar(cartPos.x, cartPos.y, cartPos.z);
-    this.type = type;         // "proton" | "electron"
+  constructor(mass, charge, pos, type) {
+    this.mass   = mass;     // mₑ=1, mp≈1836
+    this.charge = charge;   // −1 electron, +Z proton
+    this.pos    = pos;      // a₀
+    this.vel    = new THREE.Vector3();
+    this.acc    = new THREE.Vector3();
+    this.type   = type;
   }
 }
 
+// ─── State ───────────────────────────────────────────────────
 const STATE = {
-  atomLabel: AtomModel.HAtom, // pretty label used in UI/energy switch
-  particles: /** @type {Particle[]} */([]),
-  spheres: /** @type {HTMLElement[]} */([]),
-  bohrRings: /** @type {HTMLElement[]} */([]),
-  isAnimationRunning: false,
-  isNucleusLocked: false,
-  isRecordPath: false,
-  isAngularMomentum: false,
-  isLarmor: false,
-  isThetaPhi: false,
-  dtMs: 1000 / 30, // physics step in ms (changed by changeInterval)
+  atomLabel: AtomModel.HAtom,
+  particles: [], spheres: [], bohrRings: [],
+  isAnimationRunning: false, isNucleusLocked: false,
+  isRecordPath: false, isAngularMomentum: false,
+  isLarmor: false, isThetaPhi: false, isRelaxation: false,
+  _relaxTimer: 0,
+  dt: 0.08,               // a.u. time step
+  dtMs: 1000 / 30,        // display interval
   radiation: 1,
-  N: 1,
-  L: 0,
-  Z: 1, // atomic number for energy/forces where used
-  indexOfParticle: -1,
-  timePassedPs: 0,
-  countTime: 0,
-  angleCache: 0,
+  N: 1, L: 0, M: 0, Z: 1,
+  indexOfParticle: -1, timePassedPs: 0, countTime: 0, angleCache: 0,
+  _tick: 0, _uiEvery: 3,
 };
 
-// -------------------------------------------------------------
-// Scene helpers
-// -------------------------------------------------------------
-/**
- * Clears the scene of all particles and Bohr rings.
- * This function is typically called when the user wants to reset the simulation.
- */
+// ─── Scene management ────────────────────────────────────────
 function clearScene() {
-  // remove all particle entities
-  for (let i = STATE.spheres.length - 1; i >= 0; i--) {
-    try { SCENE.sceneEl.removeChild(STATE.spheres[i]); } catch {}
-  }
-  // remove all Bohr rings
-  for (let i = STATE.bohrRings.length - 1; i >= 0; i--) {
-    try { SCENE.sceneEl.removeChild(STATE.bohrRings[i]); } catch {}
-  }
-  // reset particle state
-  STATE.particles.length = 0;
-  STATE.spheres.length = 0;
-  STATE.bohrRings.length = 0;
+  for (let i = STATE.spheres.length - 1; i >= 0; i--) try { 
+    SCENE.el.removeChild(STATE.spheres[i]); 
+  } catch {}
+  for (let i = STATE.bohrRings.length - 1; i >= 0; i--) try { 
+    SCENE.el.removeChild(STATE.bohrRings[i]); 
+  } catch {}
+  STATE.particles.length = STATE.spheres.length = STATE.bohrRings.length = 0;
 }
 
-/**
- * Adds a particle entity to the scene.
- * @param {Particle} particle - The particle to render
- * @param {Object} [opts] - Optional parameters
- * @param {number} [opts.radius] - The radius of the particle
- * @param {string} [opts.color] - The color of the particle
- */
 function addParticleEntity(particle, opts = {}) {
-  // Create a new sphere entity
   const sphere = createEntity("a-sphere", {
     radius: opts.radius ?? (particle.type === "proton" ? 14 : 5),
     color: opts.color ?? (particle.type === "proton" ? "red" : "blue"),
-    class: "clickable", // wichtig für den Raycaster
+    class: "clickable",
   });
-
-  // Add the sphere to the scene
-  SCENE.sceneEl.appendChild(sphere);
-
-  // Store the sphere in the state
+  SCENE.el.appendChild(sphere); 
   STATE.spheres.push(sphere);
-
-  // Add an event listener to the sphere to handle selection
   const idx = STATE.spheres.length - 1;
   sphere.addEventListener("click", () => {
-    // dieses Partikel ist jetzt ausgewählt
     STATE.indexOfParticle = idx;
-
-    // aktuelle Position aus der Szene (in pm) lesen
-    const pos = sphere.object3D.position;
-
-    UI.Xs.value = String(pos.x.toFixed(2));
-    UI.Ys.value = String(pos.y.toFixed(2));
-    UI.Zs.value = String(pos.z.toFixed(2));
+    const p = STATE.particles[idx];
+    if (p) { 
+      UI.Xs.value = (p.pos.x * SI.a0 * 1e12).toFixed(2); 
+      UI.Ys.value = (p.pos.y * SI.a0 * 1e12).toFixed(2); 
+      UI.Zs.value = (p.pos.z * SI.a0 * 1e12).toFixed(2); 
+    }
   });
 }
 
-/**
- * Adds a new Bohr ring to the scene.
- * A Bohr ring is a grey ring that represents the orbit of an electron.
- */
 function addBohrRing() {
-  const ring = createEntity("a-ring", {
-    /**
-     * The inner radius of the Bohr ring.
-     * This is set to the Bohr radius of a hydrogen atom (9.99e11 pm).
-     */
-    "radius-inner": PHYS.a0 * 9.99e11,
-
-    /**
-     * The outer radius of the Bohr ring.
-     * This is set to the Bohr radius of a hydrogen atom (1.01e12 pm).
-     */
-    "radius-outer": PHYS.a0 * 1.01e12,
-    color: "grey",
-    opacity: 0.2,
-    "ignore-ray": true,
-  });
-
-  // Add the ring to the scene
-  SCENE.sceneEl.appendChild(ring);
-
-  // Store the ring in the state
+  const r = SCENE_SCALE;
+  const ring = createEntity("a-ring", { 
+    "radius-inner": r * 0.99, 
+    "radius-outer": r * 1.01, 
+    color: "grey", 
+    opacity: 0.2, 
+    "ignore-ray": true }
+  );
+  SCENE.el.appendChild(ring); 
   STATE.bohrRings.push(ring);
 }
 
-/**
- * Synchronizes the position of particles in the state with the position of the sphere entities in the scene.
- * This function is called every frame to ensure that the particles are correctly positioned in the scene.
- */
 function syncEntitiesToParticles() {
-  let ringIndex = 0;
+  const S = SCENE_SCALE, doUI = (STATE._tick % STATE._uiEvery === 0), pm = SI.a0 * 1e12;
+  let ringIdx = 0;
   for (let i = 0; i < STATE.particles.length; i++) {
-    const p = STATE.particles[i].cartPos.clone().multiplyScalar(1e12);
+    const p = STATE.particles[i];
+    const sx = p.pos.x * S, 
+    sy = p.pos.y * S, 
+    sz = p.pos.z * S;
     const sphere = STATE.spheres[i];
-    if (sphere) sphere.object3D.position.set(p.x, p.y, p.z);
-
-    // If particle is a proton, update the position of the associated Bohr ring
-    if (STATE.particles[i].type === "proton") {
-      const ring = STATE.bohrRings[ringIndex++];
-      if (ring) ring.object3D.position.set(p.x, p.y, p.z);
+    if (sphere) sphere.object3D.position.set(sx, sy, sz);
+    if (p.type === "proton") { 
+      const ring = STATE.bohrRings[ringIdx++]; 
+      if (ring) ring.object3D.position.set(sx, sy, sz); 
     }
-
-    // UI readout for first/second electron
-    if (STATE.particles[i].type === "electron") {
-      if (i === 1) {
-        // Update the UI fields for the first electron
-        UI.posx1.textContent = p.x.toFixed(3);
-        UI.y1.textContent = p.y.toFixed(3);
-        UI.z1.textContent = p.z.toFixed(3);
-      } else if (i === 2) {
-        // Update the UI fields for the second electron
-        UI.x2.textContent = p.x.toFixed(3);
-        UI.y2.textContent = p.y.toFixed(3);
-        UI.z2.textContent = p.z.toFixed(3);
+    if (doUI && p.type === "electron") {
+      if (i === 1) { 
+        UI.posx1.textContent = (p.pos.x * pm).toFixed(3); 
+        UI.y1.textContent = (p.pos.y * pm).toFixed(3);
+        UI.z1.textContent = (p.pos.z * pm).toFixed(3); 
+      }
+      else if (i === 2) { 
+        UI.x2.textContent = (p.pos.x * pm).toFixed(3); 
+        UI.y2.textContent = (p.pos.y * pm).toFixed(3); 
+        UI.z2.textContent = (p.pos.z * pm).toFixed(3); 
       }
     }
   }
-
-  // If first/second electron not present, blank the fields
-  if (!STATE.particles[1] || STATE.particles[1].type !== "electron") {
-    // Blank the UI fields for the first electron if it doesn't exist
-    UI.posx1.textContent = UI.y1.textContent = UI.z1.textContent = "NaN";
-  }
-  if (!STATE.particles[2] || STATE.particles[2].type !== "electron") {
-    // Blank the UI fields for the second electron if it doesn't exist
-    UI.x2.textContent = UI.y2.textContent = UI.z2.textContent = "NaN";
-  }
+  if (!STATE.particles[1] || STATE.particles[1].type !== "electron") 
+    UI.posx1.textContent = UI.y1.textContent = UI.z1.textContent = "-";
+  if (!STATE.particles[2] || STATE.particles[2].type !== "electron") 
+    UI.x2.textContent = UI.y2.textContent = UI.z2.textContent = "-";
 }
 
-// -------------------------------------------------------------
-// Builders for atoms
-// -------------------------------------------------------------
-/**
- * Pushes a proton to the given position in the scene.
- * @param {THREE.Vector3} pos - The position of the proton in the scene.
- */
-function pushProton(pos, radius = 14) {
-  // Create a new particle with the given position and properties of a proton
-  const particle = new Particle(
-    1.6726219e-27, // mass of a proton in kg
-    +1.602176634e-19, // charge of a proton in C
-    +0.5, // spin of a proton 
-    new THREE.Vector3(0, 0, 0), // initial velocity of the proton
-    pos.clone(), // position of the proton in the scene
-    "proton" // type of the particle
-  );
-
-  // Add the proton to the state
-  STATE.particles.push(particle);
-
-  // Add a sphere entity to the scene to represent the proton
-  addParticleEntity(STATE.particles[STATE.particles.length - 1], {
-    radius, // radius of the sphere entity
-    color: "red" // color of the sphere entity
-  });
-
-  // Add a Bohr ring to the scene
-  addBohrRing();
+// ─── Atom builders (positions in a₀) ─────────────────────────
+function pushProton(posAU, radius = 14)  { 
+  STATE.particles.push(new Particle(MP_AU, +1, posAU.clone(), "proton"));  
+  addParticleEntity(STATE.particles.at(-1), { radius, color: "red" });  
+  addBohrRing(); 
+}
+function pushElectron(posAU, radius = 5) { 
+  STATE.particles.push(new Particle(1, -1, posAU.clone(), "electron")); 
+  addParticleEntity(STATE.particles.at(-1), { radius, color: "blue" }); 
 }
 
-/**
- * Pushes an electron to the given position in the scene.
- * @param {THREE.Vector3} pos - The position of the electron in the scene.
- * @param {number} [radius=5] - The radius of the sphere entity that represents the electron.
- */
-function pushElectron(pos, radius = 5) {
-  // Create a new particle with the given position and properties of an electron
-  STATE.particles.push(new Particle(
-    9.10938356e-31, // mass of an electron in kg
-    -1.602176634e-19, // charge of an electron in C
-    +0.5, // spin of an electron
-    new THREE.Vector3(0, 0, 0), // initial velocity of the electron
-    pos.clone(), // position of the electron in the scene
-    "electron" // type of the particle
-  ));
-
-  // Add a sphere entity to the scene to represent the electron
-  addParticleEntity(STATE.particles[STATE.particles.length - 1], {
-    radius, // radius of the sphere entity
-    color: "blue" // color of the sphere entity
-  });
+function resetAndClear() { 
+  STATE.isAnimationRunning = false; 
+  UI.myButton.textContent = "Start"; 
+  clearScene(); 
 }
 
-/**
- * Creates a Hydrogen atom in the scene.
- */
-function createHAtom() {
-  /**
-   * Resets the animation state and clears the scene.
-   */
-  STATE.isAnimationRunning = false;
-  UI.myButton.textContent = "Start";
-  clearScene();
-
-  /**
-   * Pushes a proton to the origin of the scene.
-   */
-  pushProton(new THREE.Vector3(0, 0, 0));
-
-  /**
-   * Pushes an electron to the position (-52.917e-12, 0, 0) in the scene.
-   */
-  pushElectron(new THREE.Vector3(-52.917e-12, 0, 0));
-
-  /**
-   * Sets the atomic number and label of the atom.
-   */
-  STATE.Z = 1;
-  STATE.atomLabel = AtomModel.HAtom;
+function createHAtom() { 
+  resetAndClear(); 
+  pushProton(new THREE.Vector3(0,0,0)); 
+  pushElectron(new THREE.Vector3(-1,0,0)); 
+  STATE.Z=1; 
+  STATE.atomLabel=AtomModel.HAtom; 
+}
+function createH2Cation() { 
+  resetAndClear(); 
+  pushProton(new THREE.Vector3(-1,0,0)); 
+  pushProton(new THREE.Vector3(1,0,0)); 
+  pushElectron(new THREE.Vector3(0,0,0)); 
+  STATE.Z=1; 
+  STATE.atomLabel=AtomModel.H2Cation; 
+}
+function createHAnion() { 
+  resetAndClear(); 
+  pushProton(new THREE.Vector3(0,0,0)); 
+  pushElectron(new THREE.Vector3(-1,0,0)); 
+  pushElectron(new THREE.Vector3(1,0,0)); 
+  STATE.Z=1; STATE.atomLabel=AtomModel.HAnion; 
+}
+function createHECation() { 
+  resetAndClear(); 
+  pushProton(new THREE.Vector3(0,0,0)); 
+  STATE.particles[0].charge=2; 
+  STATE.spheres[0].setAttribute("radius",18); 
+  pushElectron(new THREE.Vector3(0.5,0,0)); 
+  STATE.Z=2; 
+  STATE.atomLabel=AtomModel.HECation; 
+}
+function createHEAtom() { 
+  resetAndClear(); 
+  pushProton(new THREE.Vector3(0,0,0)); 
+  STATE.particles[0].charge=2; 
+  STATE.spheres[0].setAttribute("radius",18); 
+  pushElectron(new THREE.Vector3(0.5,0,0)); 
+  pushElectron(new THREE.Vector3(-0.5,0,0)); 
+  STATE.Z=2; STATE.atomLabel=AtomModel.HEAtom; 
 }
 
-/**
- * Creates a H2+ cation in the scene.
- * @description This function creates a H2+ cation in the scene.
- * @param {none} - No parameters are required.
- * @return {none} - No return value is produced.
- */
-function createH2Cation() {
-  // Reset the animation state and clear the scene
-  STATE.isAnimationRunning = false;
-  UI.myButton.textContent = "Start";
-  clearScene();
-
-  // Create two protons at the positions (-52.917e-12, 0, 0) and (52.917e-12, 0, 0)
-  pushProton(new THREE.Vector3(-52.917e-12, 0, 0));
-  pushProton(new THREE.Vector3( 52.917e-12, 0, 0));
-
-  // Create an electron at the position (0, 0, 0)
-  pushElectron(new THREE.Vector3(0, 0, 0));
-
-  // Set the atomic number and label of the atom
-  STATE.Z = 1;
-  STATE.atomLabel = AtomModel.H2Cation;
-}
-
-/**
- * Creates a H⁻ anion in the scene.
- * @description This function creates a H⁻ anion in the scene.
- * @param {none} - No parameters are required.
- * @return {none} - No return value is produced.
- */
-function createHAnion() {
-  // Reset the animation state and clear the scene
-  STATE.isAnimationRunning = false;
-  UI.myButton.textContent = "Start";
-  clearScene();
-
-  // Create a proton at the position (0, 0, 0)
-  pushProton(new THREE.Vector3(0, 0, 0));
-
-  // Create two electrons at the positions (-52.917e-12, 0, 0) and (52.917e-12, 0, 0)
-  pushElectron(new THREE.Vector3(-52.917e-12, 0, 0));
-  pushElectron(new THREE.Vector3( 52.917e-12, 0, 0));
-
-  // Set the atomic number and label of the atom
-  STATE.Z = 1;
-  STATE.atomLabel = AtomModel.HAnion;
-}
-
-/**
- * Creates a HE⁺ cation in the scene.
- * @description This function creates a HE⁺ cation in the scene.
- * @param {none} - No parameters are required.
- * @return {none} - No return value is produced.
- */
-function createHECation() {
-  // Reset the animation state and clear the scene
-  STATE.isAnimationRunning = false;
-  UI.myButton.textContent = "Start";
-  clearScene();
-
-  // Combine 2p charge on one nucleus (same as original semantics)
-  // Create a proton at the origin of the scene with a charge of 2p
-  pushProton(new THREE.Vector3(0, 0, 0));
-  STATE.particles[0].charge = 2 * 1.602176634e-19;
-  STATE.spheres[0].setAttribute("radius", 18); // Increase the radius of the sphere to 18
-
-  // Create an electron at the position (0.5 a0, 0, 0)
-  pushElectron(new THREE.Vector3(0.5 * PHYS.a0, 0, 0));
-
-  // Set the atomic number and label of the atom
-  STATE.Z = 2;
-  STATE.atomLabel = AtomModel.HECation;
-}
-
-/**
- * Creates a HE atom in the scene.
- * @description This function creates a HE atom in the scene.
- * @param {none} - No parameters are required.
- * @return {none} - No return value is produced.
- */
-function createHEAtom() {
-  // Reset the animation state and clear the scene
-  STATE.isAnimationRunning = false;
-  UI.myButton.textContent = "Start";
-  clearScene();
-
-  // Create a proton at the origin of the scene with a charge of 2p
-  pushProton(new THREE.Vector3(0, 0, 0));
-  STATE.particles[0].charge = 2 * 1.602176634e-19;
-  STATE.spheres[0].setAttribute("radius", 18); // Increase the radius of the sphere to 18
-
-  // Create two electrons at the positions (0.5 a0, 0, 0) and (-0.5 a0, 0, 0)
-  pushElectron(new THREE.Vector3( 0.5 * PHYS.a0, 0, 0));
-  pushElectron(new THREE.Vector3(-0.5 * PHYS.a0, 0, 0));
-
-  // Set the atomic number and label of the atom
-  STATE.Z = 2;
-  STATE.atomLabel = AtomModel.HEAtom;
-}
-
-// default
 createHAtom();
 
-// -------------------------------------------------------------
-// UI updaters & controls
-// -------------------------------------------------------------
-/**
- * Updates the distance and energy labels based on the current atom model
- * @description This function computes the distance between the particles and the energy
- * of the system based on the current atom model. It then updates the UI labels
- * with the computed values.
- * @param {none} - No parameters are required.
- * @return {none} - No return value is produced.
- */
+// ─── Energy / distance readout (all in a₀ / Ry) ─────────────
 function updateDistanceAndEnergy() {
+  if (STATE._tick % STATE._uiEvery !== 0) return;
   const p = STATE.particles;
-  const a0 = PHYS.a0;
   switch (STATE.atomLabel) {
-    /**
-     * Case for H atom
-     * @description Compute the distance between the electron and the proton and the
-     * energy of the system. Then update the UI labels with the computed values.
-     */
     case AtomModel.HAtom: {
       if (p.length < 2) return;
-      const len = p[1].cartPos.distanceTo(p[0].cartPos);
-      UI.Distance.textContent = (len / a0).toFixed(3) + " a0";
-      const energy = (a0 ** 2 / (len ** 2)) - (2 * a0 / len);
-      UI.Energy.textContent = energy.toFixed(3) + " Ry";
+      const d = p[1].pos.distanceTo(p[0].pos);
+      UI.Distance.textContent = d.toFixed(3) + " a₀";
+      UI.Energy.textContent = (1/(d*d) - 2/d).toFixed(3) + " Ry";
       break;
     }
-    /**
-     * Case for H2+ cation
-     * @description Compute the distance between the electrons and the protons and the
-     * energy of the system. Then update the UI labels with the computed values.
-     */
     case AtomModel.H2Cation: {
       if (p.length < 3) return;
-      const l1 = p[2].cartPos.distanceTo(p[1].cartPos);
-      const l2 = p[2].cartPos.distanceTo(p[0].cartPos);
-      UI.Distance.textContent = (l1 / a0).toFixed(3) + " a0";
-      const energy = (a0 ** 2 / (l1 ** 2)) - (2 * a0 / l1)
-                   + (a0 ** 2 / (l2 ** 2)) - (2 * a0 / l2)
-                   + (2 * a0 * 0.79473 / (l1 + l2));
-      UI.Energy.textContent = energy.toFixed(3) + " Ry";
+      const d1 = p[2].pos.distanceTo(p[1].pos), d2 = p[2].pos.distanceTo(p[0].pos);
+      UI.Distance.textContent = d1.toFixed(3) + " a₀";
+      UI.Energy.textContent = ((1/(d1*d1))-(2/d1)+(1/(d2*d2))-(2/d2)+(2*0.79473/(d1+d2))).toFixed(3) + " Ry";
       break;
     }
-    /**
-     * Case for H⁻ anion
-     * @description Compute the distance between the electrons and the proton and the
-     * energy of the system. Then update the UI labels with the computed values.
-     */
     case AtomModel.HAnion: {
       if (p.length < 3) return;
-      const l3 = p[1].cartPos.distanceTo(p[0].cartPos);
-      const l4 = p[2].cartPos.distanceTo(p[0].cartPos);
-      UI.Distance.textContent = (l3 / a0).toFixed(3) + " a0";
-      const energy = (a0 ** 2 / (l3 ** 2)) - (2 * a0 / l3)
-                   + (a0 ** 2 / (l4 ** 2)) - (2 * a0 / l4)
-                   + (2 * a0 * 0.72644 / (l3 + l4));
-      UI.Energy.textContent = energy.toFixed(3) + " Ry";
+      const d1 = p[1].pos.distanceTo(p[0].pos), d2 = p[2].pos.distanceTo(p[0].pos);
+      UI.Distance.textContent = d1.toFixed(3) + " a₀";
+      UI.Energy.textContent = ((1/(d1*d1))-(2/d1)+(1/(d2*d2))-(2/d2)+(2*0.72644/(d1+d2))).toFixed(3) + " Ry";
       break;
     }
-    /**
-     * Case for HE⁺ cation
-     * @description Compute the distance between the electron and the proton and the
-     * energy of the system. Then update the UI labels with the computed values.
-     */
     case AtomModel.HECation: {
       if (p.length < 2) return;
-      const l = p[1].cartPos.distanceTo(p[0].cartPos);
-      UI.Distance.textContent = (l / a0).toFixed(3) + " a0";
-      const energy = (a0 ** 2 / (l ** 2)) - (2 * 2 * a0 / l);
-      UI.Energy.textContent = energy.toFixed(3) + " Ry";
+      const d = p[1].pos.distanceTo(p[0].pos);
+      UI.Distance.textContent = d.toFixed(3) + " a₀";
+      UI.Energy.textContent = (1/(d*d) - 4/d).toFixed(3) + " Ry";
       break;
     }
-    /**
-     * Case for HE atom
-     * @description Compute the distance between the electrons and the proton and the
-     * energy of the system. Then update the UI labels with the computed values.
-     */
     case AtomModel.HEAtom: {
       if (p.length < 3) return;
-      const l = p[1].cartPos.distanceTo(p[0].cartPos);
-      UI.Distance.textContent = (l / a0).toFixed(3) + " a0";
-      const energy = (2 * a0 ** 2 / (l ** 2)) - (4 * a0 * 1.95393 / l) + (a0 / l);
-      UI.Energy.textContent = energy.toFixed(3) + " Ry";
+      const d = p[1].pos.distanceTo(p[0].pos);
+      UI.Distance.textContent = d.toFixed(3) + " a₀";
+      UI.Energy.textContent = ((2/(d*d))-(4*1.95393/d)+(1/d)).toFixed(3) + " Ry";
       break;
     }
   }
 }
 
-/**
- * Toggles the animation state and updates the UI accordingly.
- */
-function startAnimation() {
-  // Toggle the animation state
-  STATE.isAnimationRunning = !STATE.isAnimationRunning;
-
-  // Update the UI button text
-  UI.myButton.textContent = STATE.isAnimationRunning ? "Stop" : "Start";
+// ─── Controls ────────────────────────────────────────────────
+function startAnimation() { 
+  STATE.isAnimationRunning = !STATE.isAnimationRunning; 
+  UI.myButton.textContent = STATE.isAnimationRunning ? "Stop" : "Start"; 
+}
+function toggleThetaPhi(on) { 
+  STATE.isThetaPhi = !!on; 
+}
+function toggleLamor(on) { 
+  STATE.isLarmor   = !!on; 
+}
+function changeAnsatz() { 
+  STATE.isAngularMomentum = !STATE.isAngularMomentum; 
 }
 
-/**
- * Toggles the theta-phi coordinate system flag.
- * @description When enabled, the animation will use the theta-phi coordinate
- * system instead of the cartesian coordinate system.
- * @param {boolean} on - Toggle state (true: enable, false: disable)
- */
-function toggleThetaPhi(on) {
-  STATE.isThetaPhi = !!on;
+function changeAtomModel(v) {
+  const m = { 
+    HAtom: createHAtom, 
+    H2Cation: createH2Cation, 
+    HAnion: createHAnion, 
+    HECation: createHECation, 
+    HEAtom: createHEAtom 
+  };
+  (m[v] || (() => console.warn("Unknown:", v)))();
 }
 
-/**
- * Toggles the Larmor radiation flag.
- * @param {boolean} a - Toggle state (true: enable, false: disable)
- */
-function toggleLamor(a) {
-  STATE.isLarmor = !!a;
-}
-
-/**
- * Toggles the Angular Momentum flag.
- * @description When enabled, the animation will use the Angular Momentum
- * Ansatz instead of the linear momentum Ansatz.
- * @param {boolean} a - Toggle state (true: enable, false: disable)
- */
-function changeAnsatz() {
-  STATE.isAngularMomentum = !STATE.isAngularMomentum;
-}
-
-/**
- * Changes the atomic model of the simulation.
- * @param {string} modelValue - The value of the selected atomic model.
- * @description This function changes the atomic model of the simulation by calling the appropriate
- * creation function based on the selected model. If the model is unknown, it logs a warning.
- */
-function changeAtomModel(modelValue) {
-  switch (modelValue) {
-    /**
-     * Creates a H atom in the scene.
-     * @description This function creates a H atom in the scene by creating one proton and one electron.
-     */
-    case "HAtom": createHAtom(); break;
-    /**
-     * Creates a H2+ cation in the scene.
-     * @description This function creates a H2+ cation in the scene by creating two protons and one electron.
-     */
-    case "H2Cation": createH2Cation(); break;
-    /**
-     * Creates a H- anion in the scene.
-     * @description This function creates a H- anion in the scene by creating one proton and two electrons.
-     */
-    case "HAnion": createHAnion(); break;
-    /**
-     * Creates a He+ cation in the scene.
-     * @description This function creates a He+ cation in the scene by creating two protons and one electron.
-     */
-    case "HECation": createHECation(); break;
-    /**
-     * Creates a He atom in the scene.
-     * @description This function creates a He atom in the scene by creating two protons and two electrons.
-     */
-    case "HEAtom": createHEAtom(); break;
-    default: console.warn("Unknown atom model:", modelValue);
-  }
-}
-
-/**
- * Sets all particle velocities to zero.
- * @description This function sets all particle velocities to zero and
- * also applies legacy nudges to certain atomic models.
- */
 function setVelocitiesToZero() {
-  for (let i = 0; i < STATE.particles.length; i++) {
-    STATE.particles[i].velocity.set(0, 0, 0);
+  for (const p of STATE.particles) { 
+    p.vel.set(0,0,0); 
+    p.acc.set(0,0,0); 
   }
-
-  // Legacy nudges for certain atomic models
+  const toAU = v => v / V_AU;  // SI m/s → a.u. velocity
+  const p = STATE.particles;
   switch (STATE.atomLabel) {
-    case AtomModel.H2Cation:
-      // H2+ cation: legacy nudge for the second proton
-      if (STATE.particles[2]) {
-        // Give the second proton a small velocity in the x direction
-        STATE.particles[2].velocity.x = 1.14e-13;
-      }
+    case AtomModel.H2Cation: 
+      if (p[2]) p[2].vel.x = toAU(1.14e-13); 
       break;
-    case AtomModel.HAnion:
-      // H- anion: legacy nudges for the two electrons
-      if (STATE.particles[1]) {
-        // Give the first electron a negative velocity in the x direction
-        STATE.particles[1].velocity.x = -6.35e-14;
-      }
-      if (STATE.particles[2]) {
-        // Give the second electron a positive velocity in the x direction
-        STATE.particles[2].velocity.x = +6.35e-14;
-      }
+    case AtomModel.HAnion:   
+      if (p[1]) p[1].vel.x = toAU(-6.35e-14); 
+      if (p[2]) p[2].vel.x = toAU(+6.35e-14); 
       break;
-    case AtomModel.HEAtom:
-      // He atom: legacy nudges for the two electrons
-      if (STATE.particles[1]) {
-        // Give the first electron a positive velocity in the x direction
-        STATE.particles[1].velocity.x = +7.35e-13;
-      }
-      if (STATE.particles[2]) {
-        // Give the second electron a negative velocity in the x direction
-        STATE.particles[2].velocity.x = -7.35e-13;
-      }
+    case AtomModel.HEAtom:   
+      if (p[1]) p[1].vel.x = toAU(+7.35e-13); 
+      if (p[2]) p[2].vel.x = toAU(-7.35e-13); 
       break;
-    default: break; // H Atom, HE Cation etc.: do nothing
   }
 }
 
-/**
- * Toggle the nucleus lock state.
- * When the nucleus is locked, it cannot move due to external forces.
- */
-function lockNucleus() {
-  /**
-   * The current state of the nucleus lock.
-   * @type {boolean}
-   */
-  STATE.isNucleusLocked = !STATE.isNucleusLocked;
+function lockNucleus() { 
+  STATE.isNucleusLocked = !STATE.isNucleusLocked; 
+  if (STATE.isNucleusLocked) 
+    for (const p of STATE.particles) 
+      if (p.type === "proton") p.vel.set(0,0,0); 
+}
+function startRecord() { 
+  STATE.isRecordPath = !STATE.isRecordPath; 
+  UI.pathButton.textContent = STATE.isRecordPath ? "⏸" : "⏵"; 
+  UI.led.classList.toggle("recording", STATE.isRecordPath); 
+}
+function deletePath() { 
+  SCENE.el.querySelectorAll("a-circle.trajectory-point").forEach(p => p.parentNode?.removeChild(p)); 
+}
 
-  if (STATE.isNucleusLocked) {
-    for (const p of STATE.particles) {
-      if (p.type === "proton") {
-        p.velocity.set(0, 0, 0);
-      }
-    }
+// ─── Quantum numbers & selection rules ───────────────────────
+const LEVEL_CAMERA = { 
+  1: { radiation: 1, z: 200 }, 
+  2: { radiation: 0.999905, z: 250 }, 
+  3: { radiation: 0.99995, z: 400 } 
+};
+function applyLevelCamera() { 
+  const c = LEVEL_CAMERA[STATE.N]; 
+  if (c) { STATE.radiation = c.radiation; 
+    SCENE.camera.setAttribute("position", { x:0, y:0, z:c.z }); 
+  } 
+}
+function updateQuantumUI() {
+   UI.nLvl.textContent = String(STATE.N); 
+   UI.lLvl.textContent = String(STATE.L); 
+   if (UI.mLvl) UI.mLvl.textContent = String(STATE.M); 
+}
+
+function tryTransition(nN, nL, nM) {
+  if (nN<1||nL<0||nL>=nN||Math.abs(nM)>nL) return false;
+  if (Math.abs(nL-STATE.L)!==1) { 
+    console.warn(`Δℓ=${nL-STATE.L} verboten`); 
+    return false; 
+  }
+  if (Math.abs(nM-STATE.M)>1) { 
+    console.warn(`Δm=${nM-STATE.M} verboten`); 
+    return false; 
+  }
+  if (STATE.atomLabel===AtomModel.HAtom && STATE.isAngularMomentum && STATE.particles[1] && nN>STATE.N) {
+    STATE.particles[1].pos.multiplyScalar(4);
+    const conn = STATE.particles[0].pos.clone().sub(STATE.particles[1].pos);
+    STATE.particles[1].vel.add(new THREE.Vector3(-conn.y, conn.x, 0).normalize().multiplyScalar(0.02));
+  }
+  STATE.N=nN; STATE.L=nL; STATE.M=nM; STATE._relaxTimer=0;
+  applyLevelCamera(); updateQuantumUI(); return true;
+}
+
+function incrementEnergyLevel() { 
+  tryTransition(STATE.N+1, STATE.L+1, STATE.M); 
+}
+function decrementEnergyLevel() { 
+  tryTransition(STATE.N-1, STATE.L-1, STATE.M); 
+}
+function incrementAngularMomentum() { 
+  tryTransition(STATE.N, STATE.L+1, STATE.M); 
+}
+function decrementAngularMomentum() { 
+  tryTransition(STATE.N, STATE.L-1, STATE.M); 
+}
+function incrementM() { 
+  if (!tryTransition(STATE.N, STATE.L+1, STATE.M+1)) 
+    tryTransition(STATE.N, STATE.L-1, STATE.M+1); 
+}
+function decrementM() { 
+  if (!tryTransition(STATE.N, STATE.L+1, STATE.M-1)) 
+    tryTransition(STATE.N, STATE.L-1, STATE.M-1); 
+}
+
+// ─── Relaxation ──────────────────────────────────────────────
+const RELAX_BASE_TICKS = 300;
+function toggleRelaxation(on) { 
+  STATE.isRelaxation = on !== undefined ? !!on : !STATE.isRelaxation; 
+  STATE._relaxTimer = 0; 
+}
+function tickRelaxation() {
+  if (!STATE.isRelaxation || STATE.N <= 1) return;
+  STATE._relaxTimer++;
+  if (STATE._relaxTimer >= Math.round(RELAX_BASE_TICKS / (STATE.N * STATE.N))) {
+    if (!tryTransition(STATE.N-1, STATE.L-1, STATE.M) && STATE.L===0) STATE._relaxTimer = 0;
   }
 }
 
-/**
- * Toggle path recording.
- * If the path recording is enabled, the positions of all particles will be recorded every 5 frames.
- * If the path recording is disabled, the path recording will be stopped.
- */
-function startRecord() {
-  /**
-   * The current state of the path recording.
-   * @type {boolean}
-   */
-  STATE.isRecordPath = !STATE.isRecordPath;
-
-  // Update the button text
-  const pathButton = UI.pathButton;
-  pathButton.textContent = STATE.isRecordPath ? "⏸" : "⏵";
-
-    // Toggle the recording LED class
-  UI.led.classList.toggle("recording", STATE.isRecordPath);
-}
-
-/**
- * Deletes the recorded path.
- * @description This function deletes the recorded path by removing all the
- * trajectory points from the scene.
- */
-function deletePath() {
-  // only delete our points
-  const points = SCENE.sceneEl.querySelectorAll("a-circle.trajectory-point");
-  // iterate over all points and remove them from the scene
-  points.forEach(p => {
-    if (p.parentNode) {
-      // remove the point from the scene
-      p.parentNode.removeChild(p);
-    }
-  });
-}
-
-/**
- * Increment the energy level of the atom.
- * @description This function increments the energy level of the atom.
- * @returns {void}
- */
-function incrementEnergyLevel() {
-  if (STATE.atomLabel === AtomModel.HAtom) {
-    if (STATE.isAngularMomentum && STATE.particles[1]) {
-      // up-scale distance
-      STATE.particles[1].cartPos.multiplyScalar(4);
-      const conn = STATE.particles[0].cartPos.clone().sub(STATE.particles[1].cartPos);
-      const perp = new THREE.Vector3(-conn.y, conn.x, 0).normalize().multiplyScalar(1e-12);
-      STATE.particles[1].velocity.add(perp);
-    }
-    STATE.N++; STATE.L++;
-  }
-  // radiation & camera based on N
-  if (STATE.N === 1) {
-    STATE.radiation = 1; SCENE.cameraEl.setAttribute("position", { x: 0, y: 0, z: 200 });
-  } else if (STATE.N === 2) {
-    STATE.radiation = 0.999905; SCENE.cameraEl.setAttribute("position", { x: 0, y: 0, z: 250 });
-  } else if (STATE.N === 3) {
-    STATE.radiation = 0.99995; SCENE.cameraEl.setAttribute("position", { x: 0, y: 0, z: 400 });
-  }
-  UI.nLvl.textContent = String(parseInt(UI.nLvl.textContent, 10) + 1);
-  UI.lLvl.textContent = String(parseInt(UI.lLvl.textContent, 10) + 1);
-}
-
-/**
- * Decrement the energy level of the atom.
- * @description This function decrements the energy level of the atom.
- * @returns {void}
- */
-function decrementEnergyLevel() {
-  // get the current energy level
-  const currentN = parseInt(UI.nLvl.textContent, 10) || 1;
-
-  // if the energy level is greater than 1, decrement it
-  if (currentN > 1) {
-    // decrement the energy level
-    STATE.N--;
-
-    // if the energy level is equal to the angular momentum level, decrement the angular momentum level
-    if (STATE.L === STATE.N) {
-      STATE.L--; UI.lLvl.textContent = String(parseInt(UI.lLvl.textContent, 10) - 1);
-    }
-
-    // update the UI
-    UI.nLvl.textContent = String(currentN - 1);
-
-    // update the camera position and radiation level
-    switch (STATE.N) {
-      case 1:
-        STATE.radiation = 1;
-        SCENE.cameraEl.setAttribute("position", { x: 0, y: 0, z: 200 });
-        break;
-      case 2:
-        STATE.radiation = 0.999905;
-        SCENE.cameraEl.setAttribute("position", { x: 0, y: 0, z: 250 });
-        break;
-      case 3:
-        STATE.radiation = 0.999999;
-        SCENE.cameraEl.setAttribute("position", { x: 0, y: 0, z: 400 });
-        break;
-      default:
-        console.warn("Invalid energy level");
-    }
-  } else {
-    console.warn("Invalid energy level");
-  }
-}
-
-function incrementAngularMomentum() {
-  if (STATE.L < STATE.N - 1) { STATE.L++; UI.lLvl.textContent = String(parseInt(UI.lLvl.textContent, 10) + 1); }
-  else { console.warn("Invalid spin"); }
-}
-
-/**
- * Decrement the angular momentum level of the atom.
- * @description This function decrements the angular momentum level of the atom.
- * @returns {void}
- */
-function decrementAngularMomentum() {
-  // check if the angular momentum level is greater than 0
-  if (STATE.L > 0) {
-    // decrement the angular momentum level
-    STATE.L--;
-    // update the UI
-    UI.lLvl.textContent = String(parseInt(UI.lLvl.textContent, 10) - 1);
-  } else {
-    // print a warning if the angular momentum level is invalid
-    console.warn("Invalid spin");
-  }
-}
-
-/**
- * Change the count of protons by the given delta.
- * @param {number} delta the amount to change the count by
- * @description This function changes the count of protons by the given delta.
- * If the delta is positive, a new proton is pushed to a free position.
- * If the delta is negative, the last proton is removed from the scene.
- * @returns {void}
- */
+// ─── Particle count controls ─────────────────────────────────
 function changeCountProton(delta) {
-  if (delta > 0) {
-    // find a random non-colliding x position for the new proton
-    const pos = findNonCollidingPosition(
-      "proton",
-      () => {
-        const newX = Math.random() * 2e-10 - 1e-10;
-        const newY = Math.random() * 2e-10 - 1e-10;
-        return new THREE.Vector3(newX, newY, 0);
-      }
-    );
-
-    if (pos) {
-      pushProton(pos);
-    }
-  } else if (delta < 0) {
-    // find the last proton and remove it from the scene
-    for (let i = STATE.particles.length - 1; i >= 0; i--) {
-      if (STATE.particles[i].type === "proton") {
-        // remove the sphere and ring aligned with the proton
-        const ring = STATE.bohrRings.pop(); if (ring) SCENE.sceneEl.removeChild(ring);
-        const sphere = STATE.spheres[i]; if (sphere) SCENE.sceneEl.removeChild(sphere);
-        // remove the proton from the particles array
-        STATE.spheres.splice(i, 1);
-        STATE.particles.splice(i, 1);
-        break;
-      }
-    }
+  if (delta > 0) { 
+    const pos = findNonCollidingPosition("proton", () => 
+      new THREE.Vector3(Math.random()*4-2, Math.random()*4-2, 0)
+    ); 
+    if (pos) pushProton(pos); 
   }
-
-  // update the UI
-  UI.DispCountProton.textContent = String(
-    STATE.particles.filter(p => p.type === "proton").length
-  );
+  else if (delta < 0) { 
+    for (let i = STATE.particles.length-1; i >= 0; i--) { 
+      if (STATE.particles[i].type==="proton") { 
+        const ring = STATE.bohrRings.pop(); 
+        if (ring) SCENE.el.removeChild(ring); 
+        const s = STATE.spheres[i]; 
+        if (s) SCENE.el.removeChild(s); 
+        STATE.spheres.splice(i,1); 
+        STATE.particles.splice(i,1); 
+        break; 
+      } 
+    } 
+  }
+  UI.DispCountProton.textContent = String(STATE.particles.filter(p => p.type==="proton").length);
 }
 
-/**
- * Change the count of electrons by the given delta.
- * @param {number} delta the amount to change the count by
- * @description This function changes the count of electrons by the given delta.
- * If the delta is positive, a new electron is pushed to a free position.
- * If the delta is negative, the last electron is removed from the scene.
- * @returns {void}
- */
 function changeCountElectron(delta) {
-  if (delta > 0) {
-    // find a random non-colliding x/y position for the new electron
-    const pos = findNonCollidingPosition(
-      "electron",
-      () => {
-        const newX = (Math.random() * 2 * PHYS.a0) - PHYS.a0;
-        const newY = (Math.random() * 2 * PHYS.a0) - PHYS.a0;
-        return new THREE.Vector3(newX, newY, 0);
-      }
-    );
-
-    if (pos) {
-      // nimm hier deinen gewünschten Radius (5, 1.5, …)
-      pushElectron(pos, 5);
-    }
-  } else if (delta < 0) {
-    // find the last electron and remove it from the scene
-    for (let i = STATE.particles.length - 1; i >= 0; i--) {
-      if (STATE.particles[i].type === "electron") {
-        // remove the sphere from the scene
-        const sphere = STATE.spheres[i]; if (sphere) SCENE.sceneEl.removeChild(sphere);
-        // remove the electron from the particles array
-        STATE.spheres.splice(i, 1);
-        STATE.particles.splice(i, 1);
-        break;
-      }
-    }
+  if (delta > 0) { 
+    const pos = findNonCollidingPosition("electron", () => 
+      new THREE.Vector3(Math.random()*2-1, Math.random()*2-1, 0)
+    ); 
+    if (pos) pushElectron(pos, 5); 
   }
-
-  // update the UI
-  UI.DispCountElectron.textContent = String(
-    STATE.particles.filter(p => p.type === "electron").length
-  );
+  else if (delta < 0) { 
+    for (let i = STATE.particles.length-1; i >= 0; i--) { 
+      if (STATE.particles[i].type==="electron") { 
+        const s=STATE.spheres[i]; 
+        if(s)SCENE.el.removeChild(s); 
+        STATE.spheres.splice(i,1); 
+        STATE.particles.splice(i,1); 
+        break; 
+      } 
+    } 
+  }
+  UI.DispCountElectron.textContent = String(STATE.particles.filter(p => p.type==="electron").length);
 }
 
+// ─── θ/φ quantum terms ───────────────────────────────────────
 function d2ThetaLnPsi(n, l, theta) {
-  const c = Math.cos(theta);
-  const s = Math.sin(theta);
-  const c2 = c*c;
-  const s2 = s*s;
-
-  // Beispiele m = 0 (aus Tabelle 2)
-  if (n === 2 && l === 1) {
-    // 2p:  -1 / cos²θ
-    return -1 / (c2 || 1e-9);
-  }
-  if (n === 3 && l === 2) {
-    // aus Tabelle: 6 (sin²θ - 2) / (3 cos²θ - 1)²
-    const denom = (3*c2 - 1);
-    return 6 * (s2 - 2) / ((denom*denom) || 1e-9);
-  }
-
-  return 0; 
-}
-
-function d2PhiLnPsi(n, l, m, phi) {
-  // in deinen Tabellen ist für m=0 überall 0
-  // für m ≠ 0: später ergänzen
+  const c2 = Math.cos(theta)**2, s2 = Math.sin(theta)**2;
+  if (n===2 && l===1) return -1/(c2||1e-9);
+  if (n===3 && l===2) { const d=3*c2-1; return 6*(s2-2)/((d*d)||1e-9); }
   return 0;
 }
+function d2PhiLnPsi() { return 0; }
 
-
-
-/**
- * Add event listeners to the position input fields.
- * The event listeners are triggered when the user presses enter in the input fields.
- * If the user presses enter, the position of the corresponding particle is updated.
- * @description This function adds event listeners to the position input fields.
- * @returns {void}
- */
-["Xs", "Ys", "Zs"].forEach((key, idx) => {
-  /**
-   * Event listener for the position input fields.
-   * The event listener is triggered when the user presses enter in the input field.
-   * @param {KeyboardEvent} ev the event triggered by the user
-   * @description This event listener is triggered when the user presses enter in the input field.
-   * If the user presses enter, the position of the corresponding particle is updated.
-   * @returns {void}
-   */
-  UI[key].addEventListener("keypress", (ev) => {
+// ─── Position input (pm → a.u.) ─────────────────────────────
+["Xs","Ys","Zs"].forEach((key, idx) => {
+  UI[key].addEventListener("keypress", ev => {
     if (ev.key !== "Enter") return;
-    const value = parseFloat(UI[key].value);
-    if (!Number.isFinite(value)) return;
+    const pm = parseFloat(UI[key].value);
+    if (!Number.isFinite(pm)) return;
     const p = STATE.particles[STATE.indexOfParticle];
     if (!p) return;
-    if (idx === 0) p.cartPos.x = value * 1e-12;
-    if (idx === 1) p.cartPos.y = value * 1e-12;
-    if (idx === 2) p.cartPos.z = value * 1e-12;
+    p.pos[["x","y","z"][idx]] = (pm * 1e-12) / SI.a0;
+    p.acc.set(0,0,0);
   });
 });
 
-// -------------------------------------------------------------
-// Physics step
-// -------------------------------------------------------------
+// ═════════════════════════════════════════════════════════════
+//  PHYSICS: Gather-then-Integrate
+//  ─────────────────────────────
+//  Phase 1: Compute acceleration for ALL particles from their
+//           current positions (forces evaluated simultaneously).
+//  Phase 2: Update velocity and position for ALL particles.
+//
+//  In atomic units with 4πε₀=1:
+//    F_coulomb = −Z · qi · qj / r²
+//    F_kratzer = qi · qj / r³
+//    a = F / m,   v += a·dt,   x += v·dt·radiation
+// ═════════════════════════════════════════════════════════════
 
-/**
- * Animation loop (physics step).
- * This function is called every STATE.dtMs milliseconds.
- * It updates the positions and velocities of all particles in the scene.
- * @description This function updates the positions and velocities of all particles in the scene.
- * @returns {void}
- */
+const SOFTENING = 1e-4;  // a.u.
+
 function animation() {
   updateDistanceAndEnergy();
-
   if (!STATE.isAnimationRunning || STATE.particles.length === 0) return;
+  STATE._tick++;
+  tickRelaxation();
 
-  const pArr = STATE.particles;
-  const Lterm = STATE.isAngularMomentum ? 0 : (STATE.L * (STATE.L + 1));
+  const pArr = STATE.particles, dt = STATE.dt;
+  const Lterm = STATE.isAngularMomentum ? 0 : STATE.L * (STATE.L + 1);
 
+  // ── Phase 1: Gather forces ──
   for (let i = 0; i < pArr.length; i++) {
     const pi = pArr[i];
-
-    // --- Nucleus-Lock: Protonen bleiben stehen (v = 0, a = 0) ---
-    if (STATE.isNucleusLocked && pi.type === "proton") {
-      pi.velocity.set(0, 0, 0);
-      // Position bleibt einfach so, wie sie ist
-      continue; // keine Kräfte auf Proton integrieren
-    }
-
-    // Gesamtbeschleunigung aus allen Wechselwirkungen
-    let acc = new THREE.Vector3(0, 0, 0);
-    let accSpin = new THREE.Vector3(0, 0, 0);
-
-    // Für das UI / Periodenmessung merken wir uns den letzten dv / phi der Elektronen
-    let lastDvForUI = null;
-    let lastPhiForUI = 0;
+    pi.acc.set(0, 0, 0);
+    if (STATE.isNucleusLocked && pi.type === "proton") continue;
 
     for (let j = 0; j < pArr.length; j++) {
       if (i === j) continue;
       const pj = pArr[j];
 
-      const dv = new THREE.Vector3().copy(pj.cartPos).sub(pi.cartPos);
-      const [r, theta, phi] = cartInPolar(dv.x, dv.y, dv.z);
-      if (r === 0) continue;
+      _v.dv.copy(pj.pos).sub(pi.pos);
+      const dx = _v.dv.x, dy = _v.dv.y, dz = _v.dv.z;
+      const r2 = dx*dx + dy*dy + dz*dz + SOFTENING*SOFTENING;
+      const r  = Math.sqrt(r2);
+      const r3 = r2 * r;
 
-      const perp = new THREE.Vector3(-dv.y, dv.x, 0);
+      // Coulomb
+      const Fel = (-STATE.Z * pi.charge * pj.charge) / r2;
 
-      // --- Coulomb + Kratzer + evtl. Spin-Anteil ---
-      let Fel = (-STATE.Z * pi.charge * pj.charge) / (K * r * r);
-      let Fk = 0;
-      let Fspin = 0;
+      // Kratzer + spin (opposite charges only)
+      let Fk = 0, Fspin = 0;
       if (pi.charge * pj.charge < 0) {
-        Fk = (pi.charge * pj.charge * PHYS.a0) / (K * r * r * r);
-        if (Lterm) {
-          Fspin = (pi.charge * pj.charge * Lterm * PHYS.a0) / (K * r * r * r);
-        }
+        Fk = (pi.charge * pj.charge) / r3;
+        if (Lterm) Fspin = (pi.charge * pj.charge * Lterm) / r3;
       }
 
-      // const aDir = dv.clone().normalize();
-      // const aPair = aDir.multiplyScalar((Fel + Fk) / pi.mass);
-      // acc.add(aPair);
+      // Radiation reaction
+      let Frad = 0;
+      const sgn = pi.pos.x < pj.pos.x ? -1 : pi.pos.x > pj.pos.x ? +1 : 0;
+      if (sgn !== 0) Frad = sgn * RAD_CONST_AU * (pi.charge*pj.charge)**2 * pi.vel.x / (r3 * pi.mass);
 
-      // if (Lterm) {
-      //   const aSpinPair = perp.clone().normalize().multiplyScalar(Fspin / pi.mass);
-      //   accSpin.add(aSpinPair);
-      // }
-
-      // Richtung vom Kraftvektor
-      const aDir = dv.clone().normalize();
-
-      // θ/φ-Quantenterme aus Tabellen
-      let FthetaPhi = 0;
-      if (STATE.isThetaPhi && pi.type === "electron" && pj.type === "proton") {
-        const d2θ = d2ThetaLnPsi(STATE.N, STATE.L, theta);
-        const d2φ = d2PhiLnPsi(STATE.N, STATE.L, /*m=*/0, phi); // m=0 bisher
-
-        const sin2 = Math.sin(theta); 
-        const sin2sq = sin2*sin2 || 1e-9;
-        const A = d2θ + d2φ / sin2sq;
-
-        // Radialkraft aus V_theta,phi:
-        // F_r = 2 A / r^3
-        FthetaPhi = -2 * A / (r*r*r);
+      // θ/φ correction
+      let Ftp = 0;
+      if (STATE.isThetaPhi) {
+        const [, th] = cartInPolar(dx, dy, dz);
+        const s2 = Math.sin(th)**2 || 1e-9;
+        Ftp = 2 * (d2ThetaLnPsi(STATE.N, STATE.L, th) + d2PhiLnPsi() / s2) / (r3 || 1e-18);
       }
 
-      // Gesamtkraft (radial) + Larmor/Kratzer
-      const Ftotal = Fel + Fk + FthetaPhi;
+      // Radial acceleration (ACCUMULATED over all pairs)
+      _v.dir.copy(_v.dv).divideScalar(r);
+      pi.acc.addScaledVector(_v.dir, (Fel + Fk + Frad + Ftp) / pi.mass);
 
-      // wie gehabt:
-      acc = aDir.multiplyScalar(Ftotal / pi.mass);
-      accSpin = ( Lterm ? 
-        perp.clone().normalize().multiplyScalar(Fspin / pi.mass): 
-        new THREE.Vector3(0,0,0)
-      );
-
-
-      // Für die Anzeige (nur Elektronen)
-      if (pi.charge < 0) {
-        lastDvForUI = dv;
-        lastPhiForUI = phi;
+      // Spin term (perpendicular)
+      if (Lterm) {
+        _v.perp.set(-dy, dx, 0);
+        const pLen = _v.perp.length();
+        if (pLen > 1e-12) { _v.perp.divideScalar(pLen); pi.acc.addScaledVector(_v.perp, Fspin / pi.mass); }
       }
     }
+  }
 
-    // --- Larmor-Strahlung: Energieverlust ~ v² ---
-    if (STATE.isLarmor && pi.type === "electron") {
-      // "Rate" pro Millisekunde 
-      const LARMOR_RATE = 1e-5; // ≈ 0.01 pro 100 ms
-      const damping = Math.exp(-LARMOR_RATE * STATE.dtMs);
-      pi.velocity.multiplyScalar(damping);
-    }
+  // ── Phase 2: Integrate ──
+  for (let i = 0; i < pArr.length; i++) {
+    const pi = pArr[i];
+    if (STATE.isNucleusLocked && pi.type === "proton") { pi.vel.set(0,0,0); continue; }
+    if (STATE.isLarmor && pi.type === "electron") pi.vel.multiplyScalar(Math.exp(-1e-3 * dt));
+    pi.vel.addScaledVector(pi.acc, dt);
+    pi.pos.addScaledVector(pi.vel, dt * STATE.radiation);
+  }
 
-    // --- Integration (ähnliche Größenordnung wie vorher) ---
-    pi.velocity.add(acc.multiplyScalar(1e-35)).add(accSpin.multiplyScalar(1e-37));
-    pi.cartPos.add(pi.velocity.clone().multiplyScalar(STATE.radiation));
-
-    // --- Kraft-Readout & Periodenmessung für Elektronen ---
-    if (pi.charge < 0 && lastDvForUI) {
-      const forceVec = acc.clone().multiplyScalar(pi.mass);
-      UI.fx.textContent = String(forceVec.x);
-      UI.fy.textContent = String(forceVec.y);
-      UI.fz.textContent = String(forceVec.z);
-
-      const dv = lastDvForUI;
-      const phi = lastPhiForUI;
-
-      if (STATE.countTime === 1) {
-        if (Number(STATE.angleCache.toFixed(2)) === Number(phi.toFixed(2))) {
-          STATE.countTime = 2;
-        }
-        STATE.timePassedPs += 2 * 1.6 / 885; // legacy constant
-      }
-      if (dv.length() >= 4 * PHYS.a0 && STATE.countTime === 0) {
-        STATE.countTime = 1;
-        STATE.angleCache = phi;
-      }
+  // ── Force readout (throttled) ──
+  if (STATE._tick % STATE._uiEvery === 0) {
+    for (const pi of pArr) {
+      if (pi.type !== "electron") continue;
+      UI.fx.textContent = (pi.acc.x * pi.mass).toExponential(2) + " Eₕ/a₀";
+      UI.fy.textContent = (pi.acc.y * pi.mass).toExponential(2) + " Eₕ/a₀";
+      UI.fz.textContent = (pi.acc.z * pi.mass).toExponential(2) + " Eₕ/a₀";
+      break;
     }
   }
 }
 
-// physics timer (keeps original dt/select behavior)
+// ─── Timer ───────────────────────────────────────────────────
 let interval = setInterval(animation, STATE.dtMs);
-/**
- * Changes the interval of the animation loop.
- * @param {number} newDt - new interval in milliseconds
- */
 function changeInterval(newDt) {
-  const v = Number(newDt);
-  if (!Number.isFinite(v) || v <= 0) return;
-
-  // update the interval of the animation loop
-  STATE.dtMs = v;
-
-  // clear the old interval and set a new one
-  clearInterval(interval);
-  interval = setInterval(animation, STATE.dtMs);
+  const v = Number(newDt); if (!Number.isFinite(v) || v <= 0) return;
+  STATE.dtMs = v; clearInterval(interval); interval = setInterval(animation, v);
 }
 
-// -------------------------------------------------------------
-// Render loop (rAF), path recording & frames counter hook
-// -------------------------------------------------------------
-
-/**
- * Called every frame by requestAnimationFrame.
- * Updates the trajectory points and syncs particle positions to entities.
- * @description This function updates the trajectory points and syncs particle positions to entities.
- * @returns {void}
- */
+// ─── Render loop ─────────────────────────────────────────────
 function intoRealWorld() {
-  // global `frames` variable from fps.js
-  if (typeof frames === "number") frames++; // increment frames counter
-
+  if (typeof frames === "number") frames++;
   if (STATE.particles.length > 0) {
-    // sync particle positions to entities
     syncEntitiesToParticles();
-
-    // record trajectory points
-    if (STATE.isRecordPath && (typeof frames === "number") && frames % 5 === 0) {
-      for (let i = 0; i < STATE.particles.length; i++) {
-        if (STATE.particles[i].type !== "electron") continue;
-        const p = STATE.particles[i].cartPos.clone().multiplyScalar(1e12);
-        const point = createEntity("a-circle", { radius: 1, color: "grey" });
-        point.classList.add("trajectory-point");
-        point.object3D.position.set(p.x, p.y, p.z);
-        SCENE.sceneEl.appendChild(point);
+    if (STATE.isRecordPath && typeof frames === "number" && frames % 5 === 0) {
+      const S = SCENE_SCALE;
+      for (const pi of STATE.particles) {
+        if (pi.type !== "electron") continue;
+        const pt = createEntity("a-circle", { radius: 1, color: "grey" });
+        pt.classList.add("trajectory-point");
+        pt.object3D.position.set(pi.pos.x*S, pi.pos.y*S, pi.pos.z*S);
+        SCENE.el.appendChild(pt);
       }
     }
   }
@@ -1216,12 +640,11 @@ function intoRealWorld() {
 }
 requestAnimationFrame(intoRealWorld);
 
-// -------------------------------------------------------------
-// Public API (keeps particles.html working)
-// -------------------------------------------------------------
+// ─── Public API ──────────────────────────────────────────────
 window.cartInPolar = cartInPolar;
 window.startAnimation = startAnimation;
 window.toggleLamor = toggleLamor;
+window.toggleThetaPhi = toggleThetaPhi;
 window.createH2Cation = createH2Cation;
 window.createHAnion = createHAnion;
 window.createHAtom = createHAtom;
@@ -1234,7 +657,7 @@ window.setVelocitiesToZero = setVelocitiesToZero;
 window.lockNucleus = lockNucleus;
 window.startRecord = startRecord;
 window.deletePath = deletePath;
-window.animation = animation; // still available (interval calls this)
+window.animation = animation;
 window.changeInterval = changeInterval;
 window.intoRealWorld = intoRealWorld;
 window.incrementEnergyLevel = incrementEnergyLevel;
@@ -1242,3 +665,7 @@ window.decrementEnergyLevel = decrementEnergyLevel;
 window.incrementAngularMomentum = incrementAngularMomentum;
 window.decrementAngularMomentum = decrementAngularMomentum;
 window.changeAnsatz = changeAnsatz;
+window.tryTransition = tryTransition;
+window.toggleRelaxation = toggleRelaxation;
+window.incrementM = incrementM;
+window.decrementM = decrementM;

@@ -4,32 +4,24 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Particles</title>
-  <!-- A‑Frame -->
   <script src="aframe-v1.5.0.min.js"></script>
-
-  <!-- Tweakpane (leichtgewichtiges Control-Panel)
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tweakpane@4.0.3/dist/tweakpane.min.css" />
-  <script src="https://cdn.jsdelivr.net/npm/tweakpane@4.0.3/dist/tweakpane.min.js"></script> -->
-
-  <!-- App Styles -->
   <style>
+    /* ─── Theme variables ─────────────────────────────────── */
     :root{
-      /* Default = Dark Mode */
       color-scheme: dark;
-      --bg: #0b0f17;      /* Hintergrund */
-      --panel: #121826;   /* Panel / Leisten */
-      --card: #0f1522;    /* Karten / HUD */
-      --acc: #7dd3fc;     /* Akzent (hellblau) */
-      --txt: #e5e7eb;     /* Text hell */
-      --muted:#94a3b8;    /* Text gedämpft */
-      --ok:  #22c55e;     /* Start/Recording */
-      --warn:#f59e0b;     /* Warnung */
-      --err: #ef4444;     /* Fehler */
+      --bg: #0b0f17;
+      --panel: #121826;
+      --card: #0f1522;
+      --acc: #7dd3fc;
+      --txt: #e5e7eb;
+      --muted:#94a3b8;
+      --ok:  #22c55e;
+      --warn:#f59e0b;
+      --err: #ef4444;
       --radius: 14px;
       --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --range-track: rgba(255,255,255,.15);
     }
-
-    /* Light Mode – nur UI, nicht das A-Frame-Canvas */
     :root[data-theme="light"]{
       color-scheme: light;
       --bg: #f5f5f7;
@@ -42,274 +34,137 @@
       --warn:#d97706;
       --err: #b91c1c;
       --shadow: 0 10px 26px rgba(15,23,42,.18);
+      --range-track: rgba(148,163,184,.6);
     }
 
-    html,body{
-      height:100%;
-      margin:0;
-      background:var(--bg);
-      color:var(--txt);
-      font:500 16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial
-    }
+    /* ─── Base ─────────────────────────────────────────────── */
     *{box-sizing:border-box}
-    /* Layout */
-    .app{
-      display:grid;
-      grid-template-rows:auto 1fr;
-      min-height:100vh
-    }
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--txt);
+      font:500 16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
+
+    /* ─── Layout ───────────────────────────────────────────── */
+    .app{display:grid;grid-template-rows:auto 1fr;min-height:100vh}
+
     .topbar{
       position:sticky;top:0;z-index:5;
       display:flex;align-items:center;gap:.75rem;
       padding:.6rem .9rem;
-      background: var(--panel);              /* <- benutzt jetzt das Theme */
+      background:var(--panel);
       backdrop-filter:saturate(1.2) blur(8px);
       border-bottom:1px solid rgba(148,163,184,.3);
+      flex-wrap:wrap;
     }
-    .title{
-      font-weight:700;
-      letter-spacing:.2px
+    .title{font-weight:700;letter-spacing:.2px}
+    .spacer{flex:1}
+    .group{display:inline-flex;align-items:center;gap:.5rem}
+
+    .wrap{display:grid;grid-template-columns:minmax(260px,320px) 1fr;gap:14px;padding:14px}
+    .panel{
+      background:var(--panel);border:1px solid rgba(255,255,255,.06);
+      border-radius:var(--radius);padding:10px;box-shadow:var(--shadow);
+      height:calc(100vh - 90px);overflow:auto;position:relative;z-index:3;
     }
-    .spacer{
-      flex:1
+    .scene{
+      position:relative;z-index:1;overflow:hidden;
+      background:radial-gradient(1200px 600px at 50% 10%,rgba(125,211,252,.08),transparent 60%),
+                 linear-gradient(180deg,#0b0f17,#05070c);
+      border:1px solid rgba(255,255,255,.06);border-radius:var(--radius);box-shadow:var(--shadow);
     }
+    @media(max-width:1000px){.wrap{grid-template-columns:1fr}.panel{order:2}.scene{order:1}}
+
+    /* ─── Buttons ──────────────────────────────────────────── */
     .btn{
-      appearance:none;
-      border:1px solid rgba(255,255,255,.12);
-      background:var(--card);
-      color:var(--txt);
-      padding:.45rem .7rem;
-      border-radius:10px;
-      cursor:pointer;
-      transition:.2s;
-      display:inline-flex;
-      align-items:center;
-      gap:.5rem
+      appearance:none;border:1px solid rgba(255,255,255,.12);
+      background:var(--card);color:var(--txt);
+      padding:.45rem .7rem;border-radius:10px;cursor:pointer;
+      transition:.2s;display:inline-flex;align-items:center;gap:.5rem;
     }
-    .btn:hover{
-      transform:translateY(-1px);
-      box-shadow:var(--shadow)
-    }
-    .btn.primary{
-      background:linear-gradient(180deg,#1f2937,#111827);
-      border-color:#1f2a38
-    }
+    .btn:hover{transform:translateY(-1px);box-shadow:var(--shadow)}
+    .btn.primary{background:linear-gradient(180deg,#1f2937,#111827);border-color:#1f2a38}
     :root[data-theme="light"] .btn.primary{
-      background: #f9fafb;                     /* hell wie die anderen Buttons */
-      border-color: rgba(148,163,184,.7);
-      color: #111827;
-      box-shadow: 0 3px 8px rgba(15,23,42,.12);
+      background:#f9fafb;border-color:rgba(148,163,184,.7);
+      color:#111827;box-shadow:0 3px 8px rgba(15,23,42,.12);
     }
-    :root[data-theme="light"] .btn.primary:hover{
-      background: #ffffff;
-    }
+    :root[data-theme="light"] .btn.primary:hover{background:#fff}
     .btn.ghost{background:transparent}
     .btn.warn{border-color:rgba(245,158,11,.4)}
     .btn.ok{border-color:rgba(34,197,94,.4)}
-
-    /* New: topbar controls */
-    .group{display:inline-flex;align-items:center;gap:.5rem}
-    :root{
-      /* … deine anderen Variablen … */
-      --range-track: rgba(255,255,255,.15);   /* Dark-Mode */
-    }
-    :root[data-theme="light"]{
-      /* … deine Light-Variablen … */
-      --range-track: rgba(148,163,184,.6);    /* deutlicher im hellen Header */
-    }
-    .range{
-      appearance:none;
-      width:160px;
-      height:6px;
-      border-radius:999px;
-      background:var(--range-track);
-      outline:none;
-    }
-    .range::-webkit-slider-thumb{
-      appearance:none;
-      width:16px;
-      height:16px;
-      border-radius:50%;
-      background:var(--acc);
-      border:0;
-      box-shadow:0 2px 6px rgba(0,0,0,.4)
-    }
-    .range::-moz-range-thumb{
-      width:16px;
-      height:16px;
-      border-radius:50%;
-      background:var(--acc);
-      border:0;box-shadow:
-      0 2px 6px rgba(0,0,0,.4)
-    }
-    .btn.toggle[aria-pressed="true"], .btn.toggle.active{
-      border-color:rgba(125,211,252,.7); 
-      box-shadow:var(--shadow)
+    .btn.toggle[aria-pressed="true"],.btn.toggle.active{
+      border-color:rgba(125,211,252,.7);box-shadow:var(--shadow)
     }
 
-    .wrap{
-      display:grid;
-      grid-template-columns: minmax(260px,320px) 1fr; 
-      gap:14px; 
-      padding:14px
-    }
-    .panel{
-      background:var(--panel); 
-      border:1px solid rgba(255,255,255,.06); 
-      border-radius:var(--radius); 
-      padding:10px; 
-      box-shadow:var(--shadow); 
-      height:calc(100vh - 90px); 
-      overflow:auto
-    }
-    .scene{
-      position:relative; 
-      background:radial-gradient(1200px 600px at 50% 10%, rgba(125,211,252,.08), transparent 60%), linear-gradient(180deg,#0b0f17,#05070c); 
-      border:1px solid rgba(255,255,255,.06); 
-      border-radius:var(--radius); 
-      box-shadow:var(--shadow);
-    }
+    /* ─── Range slider ─────────────────────────────────────── */
+    .range{appearance:none;width:160px;height:6px;border-radius:999px;background:var(--range-track);outline:none}
+    .range::-webkit-slider-thumb{appearance:none;width:16px;height:16px;border-radius:50%;background:var(--acc);border:0;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+    .range::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--acc);border:0;box-shadow:0 2px 6px rgba(0,0,0,.4)}
 
-    /* HUD unten */
-    .hud{
-      position:absolute;
-      left:10px;
-      right:10px;
-      bottom:10px;
-      display:flex;
-      flex-wrap:wrap;
-      gap:8px
-    }
-    .chip{
-      background:var(--card);
-      border:1px solid rgba(255,255,255,.08);
-      border-radius:12px;padding:.35rem .55rem; 
-      font-size:.9rem;
-      color:var(--muted)
-    }
-    .chip strong{
-      color:var(--txt); 
-      font-weight:700
-    }
+    /* ─── Select ───────────────────────────────────────────── */
+    .select{background:var(--card);border:1px solid rgba(255,255,255,.12);color:var(--txt);padding:.45rem .6rem;border-radius:10px}
 
-    /* Recording LED */
-    #led{
-      width:10px;
-      height:10px;
-      border-radius:50%;
-      background:#334155;
-      display:inline-block;
-      box-shadow:0 0 0 0 rgba(239,68,68,0);
-      transition:box-shadow .3s, background .3s
-    }
-    #led.recording{
-      background:var(--ok); 
-      box-shadow:0 0 0 6px rgba(34,197,94,.15)
-    }
-
-    /* Inputs im HUD (für Kompatibilität zu dynamics.js Ids sichtbar lassen) */
-    .hidden-field{
-      display:inline-flex;
-      gap:6px;
-      align-items:center
-    }
-    .hidden-field input{
-      width:70px;
-      background:transparent;
-      border:1px solid rgba(255,255,255,.12);
-      border-radius:8px;
-      color:var(--txt);
-      padding:.2rem .35rem
-    }
-
-    .readout{
-      display:grid;
-      grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
-      gap:8px;
-      margin-top:6px
-    }
-
-    .select{
-      background:var(--card);
-      border:1px solid rgba(255,255,255,.12);
-      color:var(--txt);
-      padding:.45rem .6rem;
-      border-radius:10px
-    }
-
-    /* A-Frame fit */
-    a-scene{
-      height:calc(100vh - 90px);
-      border-radius:var(--radius); 
-      position:relative !important; 
-      width:100% !important;
-    }
-    .a-canvas, a-scene canvas{
-      position:absolute; 
-      inset:0; 
-      width:100% !important; 
-      height:100% !important
-    }
-    .panel{ 
-      position:relative; 
-      z-index:3 
-    }
-    .scene{ 
-      position:relative; 
-      z-index:1; overflow:hidden 
-    }
-
-    /* Tweakpane Optik leicht anpassen */
-    .tp{
-      --tp-base-background-color: #0f1522; 
-      --tp-blade-background-color:#0b0f17; 
-      --tp-label-foreground-color:#9ca3af; 
-      --tp-input-foreground-color:#e5e7eb
-    }
-
-    @media (max-width: 1000px){ .wrap{grid-template-columns:1fr} .panel{order:2} .scene{order:1} }
-
-    .chip.ctr{ 
-      display:inline-flex; 
-      align-items:center; 
-      gap:.4rem 
-    }
+    /* ─── HUD ──────────────────────────────────────────────── */
+    .hud{position:absolute;left:10px;right:10px;bottom:10px;display:flex;flex-wrap:wrap;gap:8px}
+    .chip{background:var(--card);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:.35rem .55rem;font-size:.9rem;color:var(--muted)}
+    .chip strong{color:var(--txt);font-weight:700}
+    .chip.ctr{display:inline-flex;align-items:center;gap:.4rem}
     .chip .mini{
-      appearance:none; 
-      border:1px solid rgba(255,255,255,.18);
-      background:transparent; 
-      color:var(--txt);
-      padding:.05rem .45rem; 
-      border-radius:8px; 
-      line-height:1; 
-      cursor:pointer;
+      appearance:none;border:1px solid rgba(255,255,255,.18);
+      background:transparent;color:var(--txt);
+      padding:.05rem .45rem;border-radius:8px;line-height:1;cursor:pointer;
     }
-    .chip .mini:hover{ 
-      border-color:rgba(125,211,252,.55) 
-    }
+    .chip .mini:hover{border-color:rgba(125,211,252,.55)}
 
+    /* ─── Readout grid ─────────────────────────────────────── */
+    .readout{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-top:6px}
+
+    /* ─── Recording LED ────────────────────────────────────── */
+    #led{width:10px;height:10px;border-radius:50%;background:#334155;display:inline-block;
+      box-shadow:0 0 0 0 rgba(239,68,68,0);transition:box-shadow .3s,background .3s}
+    #led.recording{background:var(--ok);box-shadow:0 0 0 6px rgba(34,197,94,.15)}
+
+    /* ─── Hidden fields ────────────────────────────────────── */
+    .hidden-field{display:inline-flex;gap:6px;align-items:center}
+    .hidden-field input{width:70px;background:transparent;border:1px solid rgba(255,255,255,.12);
+      border-radius:8px;color:var(--txt);padding:.2rem .35rem}
+
+    /* ─── A-Frame fit ──────────────────────────────────────── */
+    a-scene{height:calc(100vh - 90px);border-radius:var(--radius);position:relative!important;width:100%!important}
+    .a-canvas,a-scene canvas{position:absolute;inset:0;width:100%!important;height:100%!important}
+
+    /* ─── Quantum state label ──────────────────────────────── */
+    .quantum-label{
+      font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+      font-size:.85rem;color:var(--acc);margin-top:8px;padding:6px 8px;
+      background:rgba(125,211,252,.06);border:1px solid rgba(125,211,252,.15);
+      border-radius:8px;text-align:center;
+    }
   </style>
 </head>
 <body>
   <div class="app">
-    <!-- Topbar -->
+
+    <!-- ═══ Topbar ═══ -->
     <div class="topbar">
       <span class="title">⚛︎ Simulation</span>
-      <button id="myButton" class="btn primary" title="Start/Stop">Start</button>
+      <button id="myButton" class="btn primary" title="Start / Stop">Start</button>
       <button id="PathButton" class="btn" title="Pfad aufzeichnen">⏵</button>
       <span id="led" title="Animation läuft?"></span>
       <button id="btnDeletePath" class="btn warn" title="Pfad löschen">Pfad löschen</button>
       <button id="btnResetV" class="btn" title="Geschwindigkeiten = 0">v = 0</button>
-      <button id="btnAnsatz" class="btn toggle" aria-pressed="false" title="Angular Momentum Ansatz">Angular Momentum</button>
-      <button id="btnLarmor" class="btn toggle" aria-pressed="false" title="Larmor-Strahlung">Larmor</button>
+
+      <button id="btnAnsatz"   class="btn toggle" aria-pressed="false" title="Angular Momentum Ansatz">Ang. Mom.</button>
+      <button id="btnLarmor"   class="btn toggle" aria-pressed="false" title="Larmor-Strahlung">Larmor</button>
       <button id="btnThetaPhi" class="btn toggle" aria-pressed="false" title="θ/φ-Quantenterme">θ/φ</button>
-      <button id="btnLock" class="btn toggle" aria-pressed="false" title="Nucleus lock">Lock</button>
+      <button id="btnLock"     class="btn toggle" aria-pressed="false" title="Nucleus lock">Lock</button>
+      <button id="btnRelax"    class="btn toggle" aria-pressed="false" title="Automatische Relaxation">Relax</button>
+
       <div class="group" style="margin-left:.4rem">
         <label for="dtSlider" style="opacity:.85">Δt</label>
         <input id="dtSlider" class="range" type="range" min="5" max="200" step="1" value="33" />
         <span id="dtValue" class="chip" style="padding:.2rem .45rem">33 ms</span>
       </div>
+
       <div class="spacer"></div>
+
       <label>Modell
         <select id="modelSelect" class="select">
           <option value="HAtom">H Atom</option>
@@ -322,375 +177,255 @@
       <button id="themeToggle" class="btn ghost" title="Hell/Dunkel umschalten">☾</button>
     </div>
 
+    <!-- ═══ Main content ═══ -->
     <div class="wrap">
-      <!-- Control Panel -->
+
+      <!-- ─── Control Panel ─── -->
       <aside class="panel">
-        <div id="pane"></div>
 
-        <!-- Minimales Readout (IDs beibehalten für dynamics.js) -->
+        <!-- Quantum state display -->
+        <div class="quantum-label" id="quantumStateLabel">|1, 0, 0⟩</div>
+
+        <!-- Distance & Energy -->
         <div class="readout" style="margin-top:10px">
-        <div class="chip">Abstand: <strong id="Distance">–</strong></div>
-        <div class="chip">Energie: <strong id="Energy">–</strong></div>
-
-        <div class="chip ctr">
-          n:
-          <button id="nDown" class="mini">−</button>
-          <strong id="nLvl">1</strong>
-          <button id="nUp" class="mini">+</button>
+          <div class="chip">Abstand: <strong id="Distance">–</strong></div>
+          <div class="chip">Energie: <strong id="Energy">–</strong></div>
         </div>
 
-        <div class="chip ctr">
-          l:
-          <button id="lDown" class="mini">−</button>
-          <strong id="lLvl">0</strong>
-          <button id="lUp" class="mini">+</button>
-        </div>
-
-        <div class="chip ctr">
-          e⁻:
-          <button id="eDown" class="mini">−</button>
-          <strong id="DispCountElectron">1</strong>
-          <button id="eUp" class="mini">+</button>
-        </div>
-
-        <div class="chip ctr">
-          p⁺:
-          <button id="pDown" class="mini">−</button>
-          <strong id="DispCountProton">1</strong>
-          <button id="pUp" class="mini">+</button>
-        </div>
-      </div>
-
-
+        <!-- Quantum numbers: n, ℓ, m -->
         <div class="readout">
-          <div class="chip">F_x: <strong id="fx">0</strong></div>
-          <div class="chip">F_y: <strong id="fy">0</strong></div>
-          <div class="chip">F_z: <strong id="fz">0</strong></div>
+          <div class="chip ctr">
+            n:
+            <button id="nDown" class="mini">−</button>
+            <strong id="nLvl">1</strong>
+            <button id="nUp" class="mini">+</button>
+          </div>
+          <div class="chip ctr">
+            ℓ:
+            <button id="lDown" class="mini">−</button>
+            <strong id="lLvl">0</strong>
+            <button id="lUp" class="mini">+</button>
+          </div>
+          <div class="chip ctr">
+            m:
+            <button id="mDown" class="mini">−</button>
+            <strong id="mLvl">0</strong>
+            <button id="mUp" class="mini">+</button>
+          </div>
         </div>
 
+        <!-- Particle counts -->
         <div class="readout">
-          <div class="chip">e₁ x:<strong id="posx1">NaN</strong></div>
-          <div class="chip">e₁ y:<strong id="y1">NaN</strong></div>
-          <div class="chip">e₁ z:<strong id="z1">NaN</strong></div>
-          <div class="chip">e₂ x:<strong id="x2">NaN</strong></div>
-          <div class="chip">e₂ y:<strong id="y2">NaN</strong></div>
-          <div class="chip">e₂ z:<strong id="z2">NaN</strong></div>
+          <div class="chip ctr">
+            e⁻:
+            <button id="eDown" class="mini">−</button>
+            <strong id="DispCountElectron">1</strong>
+            <button id="eUp" class="mini">+</button>
+          </div>
+          <div class="chip ctr">
+            p⁺:
+            <button id="pDown" class="mini">−</button>
+            <strong id="DispCountProton">1</strong>
+            <button id="pUp" class="mini">+</button>
+          </div>
         </div>
 
-        <!-- Koordinaten-Eingabe kompatibel zu dynamics.js (Enter zum Bestätigen) -->
+        <!-- Force readout -->
+        <div class="readout">
+          <div class="chip">F<sub>x</sub>: <strong id="fx">0</strong></div>
+          <div class="chip">F<sub>y</sub>: <strong id="fy">0</strong></div>
+          <div class="chip">F<sub>z</sub>: <strong id="fz">0</strong></div>
+        </div>
+
+        <!-- Electron positions -->
+        <div class="readout">
+          <div class="chip">e₁ x: <strong id="posx1">–</strong></div>
+          <div class="chip">e₁ y: <strong id="y1">–</strong></div>
+          <div class="chip">e₁ z: <strong id="z1">–</strong></div>
+          <div class="chip">e₂ x: <strong id="x2">–</strong></div>
+          <div class="chip">e₂ y: <strong id="y2">–</strong></div>
+          <div class="chip">e₂ z: <strong id="z2">–</strong></div>
+        </div>
+
+        <!-- Manual position input -->
         <div class="readout" style="margin-top:10px">
-          <div class="hidden-field">x<input id="Xs" type="text" placeholder="x (pm)"></div>
-          <div class="hidden-field">y<input id="Ys" type="text" placeholder="y (pm)"></div>
-          <div class="hidden-field">z<input id="Zs" type="text" placeholder="z (pm)"></div>
+          <div class="hidden-field">x <input id="Xs" type="text" placeholder="x (pm)"></div>
+          <div class="hidden-field">y <input id="Ys" type="text" placeholder="y (pm)"></div>
+          <div class="hidden-field">z <input id="Zs" type="text" placeholder="z (pm)"></div>
         </div>
       </aside>
 
-      <!-- Scene -->
+      <!-- ─── 3D Scene ─── -->
       <main class="scene">
         <a-scene embedded background="color: #111"
-                renderer="colorManagement: true; physicallyCorrectLights: true">
-
-          <a-entity id="camera"
-                    position="0 0 200"
-                    camera
-                    look-controls></a-entity>
-
-          <!-- Unsichtbarer Maus-Cursor: schickt click-Events an .clickable-Objekte -->
-          <a-entity id="mouseCursor"
-                    cursor="rayOrigin: mouse"
-                    raycaster="objects: .clickable; far: 1000; interval: 50">
-          </a-entity>
-
+                 renderer="colorManagement: true; physicallyCorrectLights: true">
+          <a-entity id="camera" position="0 0 200" camera look-controls></a-entity>
+          <a-entity id="mouseCursor" cursor="rayOrigin: mouse"
+                    raycaster="objects: .clickable; far: 1000; interval: 50"></a-entity>
           <a-entity light="type: ambient; color: #fff; intensity: 0.6"></a-entity>
           <a-entity light="type: directional; color: #fff; intensity: 0.8" position="0 1 1"></a-entity>
         </a-scene>
 
         <div class="hud">
           <div class="chip">Δt: <strong id="dtRead">33 ms</strong></div>
-          <div class="chip">Angular Momentum: <strong id="ansatzRead">aus</strong></div>
+          <div class="chip">Ang. Mom.: <strong id="ansatzRead">aus</strong></div>
           <div class="chip">Larmor: <strong id="larmorRead">aus</strong></div>
-          <div class="chip">Nucleus lock: <strong id="lockRead">aus</strong></div>
+          <div class="chip">Lock: <strong id="lockRead">aus</strong></div>
           <div class="chip">θ/φ: <strong id="thetaPhiRead">aus</strong></div>
+          <div class="chip">Relax: <strong id="relaxRead">aus</strong></div>
         </div>
       </main>
     </div>
   </div>
 
-  <!-- Original App Code -->
+  <!-- ═══ App scripts ═══ -->
   <script src="./fps.js"></script>
   <script src="./dynamics.js"></script>
 
-  <!-- UI Wiring -->
+  <!-- ═══ UI Wiring ═══ -->
   <script>
     (function(){
-      // ---- Guard: provide safe fallbacks if dynamics.js didn't load ----
-      const ensure = (name) => { 
-        if (typeof window[name]!== 'function') {
-           window[name] = function() { 
-            console.warn(name+"(): Fallback – 'dynamics.js' nicht geladen?"); 
-          }; 
-        }
-      };
-      [
-        'startAnimation','startRecord','deletePath','setVelocitiesToZero','changeAtomModel','changeInterval',
-        'incrementEnergyLevel','decrementEnergyLevel','incrementAngularMomentum','decrementAngularMomentum',
-        'changeAnsatz','toggleLamor','lockNucleus','changeCountElectron','changeCountProton'
-      ].forEach(ensure);
+      // ── Fallback guards ──
+      const API = [
+        'startAnimation','startRecord','deletePath','setVelocitiesToZero',
+        'changeAtomModel','changeInterval',
+        'incrementEnergyLevel','decrementEnergyLevel',
+        'incrementAngularMomentum','decrementAngularMomentum',
+        'incrementM','decrementM',
+        'changeAnsatz','toggleLamor','toggleThetaPhi',
+        'lockNucleus','changeCountElectron','changeCountProton',
+        'toggleRelaxation',
+      ];
+      API.forEach(name => {
+        if (typeof window[name] !== 'function')
+          window[name] = () => console.warn(name + "(): dynamics.js not loaded?");
+      });
 
-      // ---- Topbar Buttons ----
-      document.getElementById('myButton').addEventListener('click', () => window.startAnimation());
-      document.getElementById('PathButton').addEventListener('click', () => window.startRecord());
-      document.getElementById('btnDeletePath').addEventListener('click', () => window.deletePath());
-      document.getElementById('btnResetV').addEventListener('click', () => window.setVelocitiesToZero());
-      document.getElementById('modelSelect').addEventListener('change', (e) => window.changeAtomModel(e.target.value));
-      // ---- n / l ----
-      document.getElementById('nUp').addEventListener('click',   () => window.incrementEnergyLevel());
-      document.getElementById('nDown').addEventListener('click', () => window.decrementEnergyLevel());
-      document.getElementById('lUp').addEventListener('click',   () => window.incrementAngularMomentum());
-      document.getElementById('lDown').addEventListener('click', () => window.decrementAngularMomentum());
-
-      // ---- e⁻ / p⁺ ----
-      document.getElementById('eUp').addEventListener('click',   () => window.changeCountElectron(+1));
-      document.getElementById('eDown').addEventListener('click', () => window.changeCountElectron(-1));
-      document.getElementById('pUp').addEventListener('click',   () => window.changeCountProton(+1));
-      document.getElementById('pDown').addEventListener('click', () => window.changeCountProton(-1));
-
-            // ---- Theme Toggle (Light/Dark) ----
-      const root = document.documentElement;
-      const themeToggle = document.getElementById('themeToggle');
-
-      function setTheme(theme){
-        root.setAttribute('data-theme', theme);
-        if (themeToggle){
-          themeToggle.textContent = theme === 'dark' ? '☾' : '☀︎';
-        }
-        try {
-          localStorage.setItem('ui-theme', theme);
-        } catch(e) {
-          // Storage nicht verfügbar, egal
-        }
+      // ── Helper: wire a click ──
+      function on(id, fn) {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('click', fn);
       }
 
-      // Initial aus localStorage laden (falls vorhanden)
-      let savedTheme = null;
-      try {
-        savedTheme = localStorage.getItem('ui-theme');
-      } catch(e) {}
-
-      setTheme(savedTheme === 'light' ? 'light' : 'dark');
-
-      if (themeToggle){
-        themeToggle.addEventListener('click', () => {
-          const current = root.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
-          const next = current === 'light' ? 'dark' : 'light';
-          setTheme(next);
-        });
-      }
-
-
-      // ---- New: topbar controls wiring ----
-      const dtSlider = document.getElementById('dtSlider');
-      const dtValue = document.getElementById('dtValue');
-      function applyDt(val) {
-        val = parseInt(val,10);
-        if(!Number.isFinite(val)) return; 
-        window.changeInterval(val); 
-        document.getElementById('dtRead').textContent = val + ' ms'; dtValue.textContent = val + ' ms'; 
-      }
-      if (dtSlider) { 
-        dtSlider.addEventListener('input', (e) => 
-          applyDt(e.target.value)
-        ); 
-        dtSlider.addEventListener('change', (e) => 
-          applyDt(e.target.value)
-        ); 
-      }
-
-      function bindToggle(id, onToggle){
-        const btn = document.getElementById(id); 
-        if(!btn) return;
+      // ── Helper: toggle button with aria-pressed ──
+      function bindToggle(id, onToggle) {
+        const btn = document.getElementById(id);
+        if (!btn) return;
         btn.addEventListener('click', () => {
-          const pressed = btn.getAttribute('aria-pressed') === 'true';
-          const next = !pressed;
+          const next = btn.getAttribute('aria-pressed') !== 'true';
           btn.setAttribute('aria-pressed', String(next));
           btn.classList.toggle('active', next);
           onToggle(next);
         });
       }
-      bindToggle('btnAnsatz', (next) => {
-        window.changeAnsatz(); 
-        document.getElementById('ansatzRead').textContent = next ? 'an' : 'aus'; 
+
+      // ── Topbar buttons ──
+      on('myButton',      () => window.startAnimation());
+      on('PathButton',    () => window.startRecord());
+      on('btnDeletePath', () => window.deletePath());
+      on('btnResetV',     () => window.setVelocitiesToZero());
+
+      document.getElementById('modelSelect')
+        .addEventListener('change', e => window.changeAtomModel(e.target.value));
+
+      // ── Quantum numbers: n, ℓ, m ──
+      on('nUp',   () => window.incrementEnergyLevel());
+      on('nDown', () => window.decrementEnergyLevel());
+      on('lUp',   () => window.incrementAngularMomentum());
+      on('lDown', () => window.decrementAngularMomentum());
+      on('mUp',   () => window.incrementM());
+      on('mDown', () => window.decrementM());
+
+      // ── Particle counts ──
+      on('eUp',   () => window.changeCountElectron(+1));
+      on('eDown', () => window.changeCountElectron(-1));
+      on('pUp',   () => window.changeCountProton(+1));
+      on('pDown', () => window.changeCountProton(-1));
+
+      // ── Toggle buttons ──
+      bindToggle('btnAnsatz', next => {
+        window.changeAnsatz();
+        document.getElementById('ansatzRead').textContent = next ? 'an' : 'aus';
       });
-      bindToggle('btnLarmor', (next) => { 
-        window.toggleLamor(next); 
-        document.getElementById('larmorRead').textContent = next ? 'an' : 'aus'; 
+      bindToggle('btnLarmor', next => {
+        window.toggleLamor(next);
+        document.getElementById('larmorRead').textContent = next ? 'an' : 'aus';
       });
-      bindToggle('btnThetaPhi', (next)=> {
+      bindToggle('btnThetaPhi', next => {
         window.toggleThetaPhi(next);
         document.getElementById('thetaPhiRead').textContent = next ? 'an' : 'aus';
       });
-      bindToggle('btnLock', (next) => { 
-        window.lockNucleus(); 
-        document.getElementById('lockRead').textContent = next ? 'an' : 'aus'; 
+      bindToggle('btnLock', next => {
+        window.lockNucleus();
+        document.getElementById('lockRead').textContent = next ? 'an' : 'aus';
+      });
+      bindToggle('btnRelax', next => {
+        window.toggleRelaxation(next);
+        document.getElementById('relaxRead').textContent = next ? 'an' : 'aus';
       });
 
-      // // ---- Tweakpane loader with CDN fallback (optional advanced panel) ----
-      // function initPane(){
-      //   if (!document.getElementById('pane')) return; // pane optional
-      //   const pane = new window.Tweakpane.Pane({
-      //     container: document.getElementById('pane')
-      //   });
-      //   const state = { 
-      //     dt: 33, 
-      //     electrons: 1, 
-      //     protons: 1, 
-      //     ansatz: false, 
-      //     larmor: false, 
-      //     lockNucleus: false 
-      //   };
-      //   const fSim = pane.addFolder({title:'Simulation'});
-      //   fSim
-      //     .addBinding(state, 'dt', {min:5, max:200, step:1, label:'Δt (ms)'})
-      //     .on('change', ev => {applyDt(ev.value); if (dtSlider) { dtSlider.value = String(ev.value); } });
-      //   fSim
-      //     .addButton({title:'Start / Stop'})
-      //     .on('click', () => window.startAnimation());
-      //   fSim
-      //     .addButton({title:'Pfad aufzeichnen'})
-      //     .on('click', () => window.startRecord());
-      //   fSim.
-      //     addButton({title:'Pfad löschen'})
-      //     .on('click', () => window.deletePath());
-      //   fSim
-      //     .addButton({title:'v = 0 (alle)'})
-      //     .on('click', () => window.setVelocitiesToZero());
+      // ── Δt slider ──
+      const dtSlider = document.getElementById('dtSlider');
+      const dtValue  = document.getElementById('dtValue');
+      function applyDt(val) {
+        val = parseInt(val, 10);
+        if (!Number.isFinite(val)) return;
+        window.changeInterval(val);
+        document.getElementById('dtRead').textContent = val + ' ms';
+        dtValue.textContent = val + ' ms';
+      }
+      if (dtSlider) {
+        dtSlider.addEventListener('input',  e => applyDt(e.target.value));
+        dtSlider.addEventListener('change', e => applyDt(e.target.value));
+      }
 
-      //   const fModel = pane.addFolder({title:'Modell & Teilchen'});
-      //   const modelInput = fModel.addBlade({view:'list', label:'Modell wählen', options:[
-      //     {text:'H Atom', value:'HAtom'},
-      //     {text:'H₂⁺', value:'H2Cation'},
-      //     {text:'H⁻', value:'HAnion'},
-      //     {text:'He⁺', value:'HECation'},
-      //     {text:'He', value:'HEAtom'},
-      //   ], value:'HAtom'});
-      //   modelInput.on('change', ev => { 
-      //     window.changeAtomModel(ev.value);
-      //     document.getElementById('modelSelect').value = ev.value;
-      //   });
-      //   fModel
-      //     .addButton({title:'Elektron +'})
-      //     .on('click', () => window.changeCountElectron(+1));
-      //   fModel
-      //     .addButton({title:'Elektron −'})
-      //     .on('click', () => window.changeCountElectron(-1));
-      //   fModel
-      //     .addButton({title:'Proton +'})
-      //     .on('click', () => window.changeCountProton(+1));
-      //   fModel
-      //     .addButton({title:'Proton −'})
-      //     .on('click', () => window.changeCountProton(-1));
+      // ── Theme toggle ──
+      const root = document.documentElement;
+      const themeToggle = document.getElementById('themeToggle');
 
-      //   const fLevels = pane.addFolder({title:'Quantenzahlen'});
-      //   fLevels
-      //     .addButton({title:'n +'})
-      //     .on('click', () => window.incrementEnergyLevel());
-      //   fLevels
-      //     .addButton({title:'n −'})
-      //     .on('click', () => window.decrementEnergyLevel());
-      //   fLevels
-      //     .addButton({title:'l +'})
-      //     .on('click', () => window.incrementAngularMomentum());
-      //   fLevels
-      //     .addButton({title:'l −'})
-      //     .on('click', () => window.decrementAngularMomentum());
+      function setTheme(theme) {
+        root.setAttribute('data-theme', theme);
+        if (themeToggle) themeToggle.textContent = theme === 'dark' ? '☾' : '☀︎';
+        try { localStorage.setItem('ui-theme', theme); } catch {}
+      }
 
-      //   const fAdv = pane.addFolder({title:'Ansätze & Optionen'});
-      //   fAdv
-      //     .addBinding(
-      //       state, 
-      //       'ansatz', 
-      //       {label:'Angular Momentum Ansatz'}
-      //     )
-      //     .on('change', ev => { 
-      //       window.changeAnsatz(); 
-      //       document.getElementById('ansatzRead').textContent = ev.value ? 'an' : 'aus'; 
-      //       document.getElementById('btnAnsatz').setAttribute('aria-pressed', String(!!ev.value)); 
-      //       document.getElementById('btnAnsatz').classList.toggle('active', !!ev.value); 
-      //     });
-      //   fAdv
-      //     .addBinding(
-      //       state, 
-      //       'larmor', 
-      //       {label:'Larmor Strahlung'}
-      //     )
-      //     .on('change', ev => { 
-      //       window.toggleLamor(ev.value); 
-      //       document.getElementById('larmorRead').textContent = ev.value ? 'an' : 'aus'; 
-      //       document.getElementById('btnLarmor').setAttribute('aria-pressed', String(!!ev.value)); 
-      //       document.getElementById('btnLarmor').classList.toggle('active', !!ev.value); 
-      //     });
-      //   fAdv
-      //     .addBinding(
-      //       state, 
-      //       'lockNucleus', 
-      //       {label:'Nucleus lock'})
-      //     .on('change', ev => { 
-      //       window.lockNucleus(); 
-      //       document.getElementById('lockRead').textContent = ev.value ? 'an' : 'aus'; 
-      //       document.getElementById('btnLock').setAttribute('aria-pressed', String(!!ev.value)); 
-      //       document.getElementById('btnLock').classList.toggle('active', !!ev.value); 
-      //     });
-      // }
+      let saved = null;
+      try { saved = localStorage.getItem('ui-theme'); } catch {}
+      setTheme(saved === 'light' ? 'light' : 'dark');
 
-      // function ensureTweakpaneThenInit(){
-      //   if (!document.getElementById('pane')) return; // skip if no pane
-      //   if (window.Tweakpane && window.Tweakpane.Pane) { 
-      //     initPane(); 
-      //     return; 
-      //   }
-      //   // Try fallback CDN if first include failed
-      //   const s = document.createElement('script');
-      //   s.src = 'https://unpkg.com/tweakpane@4.0.3/dist/tweakpane.min.js';
-      //   s.onload = initPane;
-      //   s.onerror = () => console.warn('Tweakpane konnte nicht geladen werden (optional).');
-      //   document.head.appendChild(s);
-      // }
+      if (themeToggle) {
+        themeToggle.addEventListener('click', () => {
+          setTheme(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+        });
+      }
 
-      // if (document.readyState === 'loading') {
-      //   document.addEventListener('DOMContentLoaded', ensureTweakpaneThenInit);
-      // } else {
-      //   ensureTweakpaneThenInit();
-      // }
+      // ── Quantum state label updater ──
+      // Polls STATE.N / L / M every 500ms to update the |n,ℓ,m⟩ display
+      const qLabel = document.getElementById('quantumStateLabel');
+      if (qLabel) {
+        setInterval(() => {
+          const n = document.getElementById('nLvl')?.textContent || '?';
+          const l = document.getElementById('lLvl')?.textContent || '?';
+          const m = document.getElementById('mLvl')?.textContent || '?';
+          qLabel.textContent = `|${n}, ${l}, ${m}⟩`;
+        }, 500);
+      }
 
-      // ---- Minimal self-tests (dev console) ----
+      // ── Self-tests (dev console) ──
       (function tests(){
-        function test(name, fn) { 
-          try{ 
-            fn(); 
-            console.log('✅ '+name);
-          } 
-          catch(e) { 
-            console.error('❌ '+name+' →', e); 
-          } 
+        function test(name, fn) {
+          try { fn(); console.log('✅ ' + name); }
+          catch(e) { console.error('❌ ' + name + ' →', e); }
         }
-        test('A-Frame scene is embedded', () => { 
-          if(!document.querySelector('a-scene[embedded]')) throw new Error('embedded Attribut fehlt'); 
-        }); 
-        test('UI functions exist', () => { 
-          ['startAnimation','startRecord','deletePath','setVelocitiesToZero','changeInterval','changeAnsatz','toggleLamor','lockNucleus']
-            .forEach(fn => {
-               if (typeof window[fn] !== 'function') { throw new Error(fn+' fehlt'); } 
-            }); 
+        test('A-Frame scene embedded',    () => { if (!document.querySelector('a-scene[embedded]')) throw 'missing'; });
+        test('Core API functions present', () => {
+          ['startAnimation','startRecord','deletePath','setVelocitiesToZero',
+           'changeInterval','changeAnsatz','toggleLamor','lockNucleus',
+           'tryTransition','toggleRelaxation','incrementM','decrementM']
+            .forEach(fn => { if (typeof window[fn] !== 'function') throw fn + ' missing'; });
         });
-        test('Topbar dt slider present', () => { 
-          if(!document.getElementById('dtSlider')) throw new Error('dtSlider fehlt'); 
-        });
-        test('Topbar toggles present', () => { 
-          ['btnAnsatz','btnLarmor','btnLock']
-            .forEach(id => { 
-              if(!document.getElementById(id)) throw new Error(id+' fehlt');
-            });
-        });
+        test('Topbar slider present',     () => { if (!document.getElementById('dtSlider')) throw 'missing'; });
+        test('Quantum m controls present', () => { if (!document.getElementById('mUp')) throw 'missing'; });
       })();
     })();
   </script>
