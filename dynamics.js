@@ -34,8 +34,11 @@ const RAD_CONST_AU = 2 / (3 * C_AU * C_AU * C_AU);   // radiation prefactor
 const V_AU = SI.hbar / (SI.me * SI.a0);              // 1 a.u. velocity in m/s
 
 const AtomModel = Object.freeze({
-  HAtom: "H Atom", H2Cation: "H2 Cation", HAnion: "H Anion",
-  HECation: "HE Cation", HEAtom: "HE Atom",
+  HAtom: "H Atom", 
+  H2Cation: "H2 Cation", 
+  HAnion: "H Anion",
+  HECation: "HE Cation", 
+  HEAtom: "HE Atom",
 });
 
 // ─── Utilities ───────────────────────────────────────────────
@@ -48,7 +51,9 @@ function cartInPolar(x, y, z) {
 
 function createEntity(tag, attrs) {
   const el = document.createElement(tag);
-  if (attrs) for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  if (attrs) 
+    for (const [k, v] of Object.entries(attrs)) 
+      el.setAttribute(k, v);
   return el;
 }
 
@@ -67,7 +72,10 @@ function findNonCollidingPosition(type, generator) {
     let ok = true;
     for (const p of STATE.particles) {
       const r2 = p.type === "electron" ? 0.1 : 0.27;
-      if (p.pos.distanceTo(c) < 0.2 + r1 + r2) { ok = false; break; }
+      if (p.pos.distanceTo(c) < 0.2 + r1 + r2) { 
+        ok = false; 
+        break; 
+      }
     }
     if (ok) return c;
   }
@@ -121,26 +129,35 @@ class Particle {
 // ─── State ───────────────────────────────────────────────────
 const STATE = {
   atomLabel: AtomModel.HAtom,
-  particles: [], spheres: [], bohrRings: [],
-  isAnimationRunning: false, isNucleusLocked: false,
-  isRecordPath: false, isAngularMomentum: false,
-  isLarmor: false, isThetaPhi: false, isRelaxation: false,
+  particles: [], 
+  spheres: [], 
+  bohrRings: [],
+  isAnimationRunning: false, 
+  isNucleusLocked: false,
+  isRecordPath: false, 
+  isAngularMomentum: false,
+  isLarmor: false, 
+  isThetaPhi: false, 
+  isRelaxation: false,
   _relaxTimer: 0,
   dt: 0.08,               // a.u. time step
   dtMs: 1000 / 30,        // display interval
   radiation: 1,
   N: 1, L: 0, M: 0, Z: 1,
-  indexOfParticle: -1, timePassedPs: 0, countTime: 0, angleCache: 0,
+  indexOfParticle: -1, 
+  timePassedPs: 0, 
+  countTime: 0, 
+  angleCache: 0,
   _tick: 0, _uiEvery: 3,
 };
 
 // ─── Scene management ────────────────────────────────────────
 function clearScene() {
-  for (let i = STATE.spheres.length - 1; i >= 0; i--) try { 
-    SCENE.el.removeChild(STATE.spheres[i]); 
+  for (let i = STATE.spheres.length - 1; i >= 0; i--) 
+    try { SCENE.el.removeChild(STATE.spheres[i]); 
   } catch {}
-  for (let i = STATE.bohrRings.length - 1; i >= 0; i--) try { 
-    SCENE.el.removeChild(STATE.bohrRings[i]); 
+  for (let i = STATE.bohrRings.length - 1; i >= 0; i--) 
+    try { SCENE.el.removeChild(STATE.bohrRings[i]); 
   } catch {}
   STATE.particles.length = STATE.spheres.length = STATE.bohrRings.length = 0;
 }
@@ -172,14 +189,14 @@ function addBohrRing() {
     "radius-outer": r * 1.01, 
     color: "grey", 
     opacity: 0.2, 
-    "ignore-ray": true }
-  );
+    "ignore-ray": true 
+  });
   SCENE.el.appendChild(ring); 
   STATE.bohrRings.push(ring);
 }
 
 function syncEntitiesToParticles() {
-  const S = SCENE_SCALE, doUI = (STATE._tick % STATE._uiEvery === 0), pm = SI.a0 * 1e12;
+  const S = SCENE_SCALE, pm = SI.a0 * 1e12;
   let ringIdx = 0;
   for (let i = 0; i < STATE.particles.length; i++) {
     const p = STATE.particles[i];
@@ -192,10 +209,10 @@ function syncEntitiesToParticles() {
       const ring = STATE.bohrRings[ringIdx++]; 
       if (ring) ring.object3D.position.set(sx, sy, sz); 
     }
-    if (doUI && p.type === "electron") {
+    if (p.type === "electron") {
       if (i === 1) { 
         UI.posx1.textContent = (p.pos.x * pm).toFixed(3); 
-        UI.y1.textContent = (p.pos.y * pm).toFixed(3);
+        UI.y1.textContent = (p.pos.y * pm).toFixed(3); 
         UI.z1.textContent = (p.pos.z * pm).toFixed(3); 
       }
       else if (i === 2) { 
@@ -211,14 +228,174 @@ function syncEntitiesToParticles() {
     UI.x2.textContent = UI.y2.textContent = UI.z2.textContent = "-";
 }
 
+// ─── Drag & Drop ─────────────────────────────────────────────
+// Click+hold on a particle → drag it in the camera-facing plane.
+// While dragging, velocity is zeroed so it stays put on release.
+// Works by raycasting from the mouse into the scene, then
+// projecting onto a plane through the particle position that
+// faces the camera.
+
+const _drag = {
+  active: false,
+  particleIdx: -1,
+  plane: new THREE.Plane(),
+  intersect: new THREE.Vector3(),
+  raycaster: new THREE.Raycaster(),
+  mouse: new THREE.Vector2(),
+  offset: new THREE.Vector3(),  // grab offset so particle doesn't jump to cursor
+};
+
+function _getCanvasEl() {
+  return SCENE.el?.canvas || SCENE.el?.querySelector('canvas');
+}
+
+function _updateMouse(ev) {
+  const canvas = _getCanvasEl();
+  if (!canvas) return;
+  const rect = canvas.getBoundingClientRect();
+  _drag.mouse.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+  _drag.mouse.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+}
+
+function _getCameraObj() {
+  return SCENE.camera?.object3D?.children?.find(c => c.isCamera)
+    || SCENE.camera?.object3D;
+}
+
+function _onPointerDown(ev) {
+  _updateMouse(ev);
+  const cam = _getCameraObj();
+  if (!cam) return;
+
+  _drag.raycaster.setFromCamera(_drag.mouse, cam);
+
+  // Test against all particle spheres
+  const meshes = [];
+  for (let i = 0; i < STATE.spheres.length; i++) {
+    const obj = STATE.spheres[i]?.object3D;
+    if (obj) {
+      obj.traverse(child => { 
+        if (child.isMesh) { 
+          child._particleIdx = i; 
+          meshes.push(child); 
+        } 
+      });
+    }
+  }
+
+  const hits = _drag.raycaster.intersectObjects(meshes, false);
+  if (hits.length === 0) return;
+
+  const hit = hits[0];
+  const idx = hit.object._particleIdx;
+  if (idx == null || !STATE.particles[idx]) return;
+
+  _drag.active = true;
+  _drag.particleIdx = idx;
+  STATE.indexOfParticle = idx;
+
+  // Set up drag plane: faces camera, passes through particle
+  const particle = STATE.particles[idx];
+  const worldPos = new THREE.Vector3(
+    particle.pos.x * SCENE_SCALE,
+    particle.pos.y * SCENE_SCALE,
+    particle.pos.z * SCENE_SCALE,
+  );
+
+  const camDir = new THREE.Vector3();
+  cam.getWorldDirection(camDir);
+  _drag.plane.setFromNormalAndCoplanarPoint(camDir, worldPos);
+
+  // Calculate grab offset (so particle doesn't snap to cursor)
+  if (_drag.raycaster.ray.intersectPlane(_drag.plane, _drag.intersect)) {
+    _drag.offset.copy(worldPos).sub(_drag.intersect);
+  }
+
+  // Disable look-controls while dragging
+  const lookControls = SCENE.camera?.getAttribute?.('look-controls');
+  if (lookControls !== null) SCENE.camera.setAttribute('look-controls', 'enabled', false);
+
+  // Visual highlight: make dragged particle emissive
+  const sphere = STATE.spheres[idx];
+  if (sphere) sphere.setAttribute('material', 'emissive', '#446');
+
+  ev.preventDefault();
+}
+
+function _onPointerMove(ev) {
+  if (!_drag.active) return;
+  _updateMouse(ev);
+
+  const cam = _getCameraObj();
+  if (!cam) return;
+
+  _drag.raycaster.setFromCamera(_drag.mouse, cam);
+
+  if (_drag.raycaster.ray.intersectPlane(_drag.plane, _drag.intersect)) {
+    // Apply offset so particle stays where you grabbed it
+    _drag.intersect.add(_drag.offset);
+
+    // Convert scene units → a.u.
+    const particle = STATE.particles[_drag.particleIdx];
+    if (particle) {
+      particle.pos.set(
+        _drag.intersect.x / SCENE_SCALE,
+        _drag.intersect.y / SCENE_SCALE,
+        _drag.intersect.z / SCENE_SCALE,
+      );
+      // Zero velocity while dragging (so it doesn't fly away on release)
+      particle.vel.set(0, 0, 0);
+      particle.acc.set(0, 0, 0);
+
+      // Update position input fields
+      const pm = SI.a0 * 1e12;
+      UI.Xs.value = (particle.pos.x * pm).toFixed(2);
+      UI.Ys.value = (particle.pos.y * pm).toFixed(2);
+      UI.Zs.value = (particle.pos.z * pm).toFixed(2);
+    }
+  }
+
+  ev.preventDefault();
+}
+
+function _onPointerUp(ev) {
+  if (!_drag.active) return;
+
+  // Remove highlight
+  const sphere = STATE.spheres[_drag.particleIdx];
+  if (sphere) sphere.setAttribute('material', 'emissive', '#000');
+
+  _drag.active = false;
+
+  // Re-enable look-controls
+  const lookControls = SCENE.camera?.getAttribute?.('look-controls');
+  if (lookControls !== null) SCENE.camera.setAttribute('look-controls', 'enabled', true);
+}
+
+// Attach listeners once A-Frame scene is ready
+function _initDragDrop() {
+  const canvas = _getCanvasEl();
+  if (!canvas) {
+    // A-Frame not ready yet, retry
+    setTimeout(_initDragDrop, 200);
+    return;
+  }
+  canvas.addEventListener('pointerdown', _onPointerDown);
+  canvas.addEventListener('pointermove', _onPointerMove);
+  canvas.addEventListener('pointerup',   _onPointerUp);
+  canvas.addEventListener('pointerleave', _onPointerUp);
+  canvas.style.touchAction = 'none';  // prevent scroll on touch devices
+}
+_initDragDrop();
+
 // ─── Atom builders (positions in a₀) ─────────────────────────
-function pushProton(posAU, radius = 14)  { 
+function pushProton(posAU, radius = 14) { 
   STATE.particles.push(new Particle(MP_AU, +1, posAU.clone(), "proton"));  
   addParticleEntity(STATE.particles.at(-1), { radius, color: "red" });  
   addBohrRing(); 
 }
 function pushElectron(posAU, radius = 5) { 
-  STATE.particles.push(new Particle(1, -1, posAU.clone(), "electron")); 
+  STATE.particles.push(new Particle(1,-1, posAU.clone(), "electron")); 
   addParticleEntity(STATE.particles.at(-1), { radius, color: "blue" }); 
 }
 
@@ -248,7 +425,8 @@ function createHAnion() {
   pushProton(new THREE.Vector3(0,0,0)); 
   pushElectron(new THREE.Vector3(-1,0,0)); 
   pushElectron(new THREE.Vector3(1,0,0)); 
-  STATE.Z=1; STATE.atomLabel=AtomModel.HAnion; 
+  STATE.Z=1; 
+  STATE.atomLabel=AtomModel.HAnion; 
 }
 function createHECation() { 
   resetAndClear(); 
@@ -273,7 +451,6 @@ createHAtom();
 
 // ─── Energy / distance readout (all in a₀ / Ry) ─────────────
 function updateDistanceAndEnergy() {
-  if (STATE._tick % STATE._uiEvery !== 0) return;
   const p = STATE.particles;
   switch (STATE.atomLabel) {
     case AtomModel.HAtom: {
@@ -351,11 +528,11 @@ function setVelocitiesToZero() {
     case AtomModel.H2Cation: 
       if (p[2]) p[2].vel.x = toAU(1.14e-13); 
       break;
-    case AtomModel.HAnion:   
+    case AtomModel.HAnion: 
       if (p[1]) p[1].vel.x = toAU(-6.35e-14); 
       if (p[2]) p[2].vel.x = toAU(+6.35e-14); 
       break;
-    case AtomModel.HEAtom:   
+    case AtomModel.HEAtom: 
       if (p[1]) p[1].vel.x = toAU(+7.35e-13); 
       if (p[2]) p[2].vel.x = toAU(-7.35e-13); 
       break;
@@ -366,16 +543,14 @@ function lockNucleus() {
   STATE.isNucleusLocked = !STATE.isNucleusLocked; 
   if (STATE.isNucleusLocked) 
     for (const p of STATE.particles) 
-      if (p.type === "proton") p.vel.set(0,0,0); 
-}
+      if (p.type === "proton") 
+        p.vel.set(0,0,0); }
 function startRecord() { 
   STATE.isRecordPath = !STATE.isRecordPath; 
   UI.pathButton.textContent = STATE.isRecordPath ? "⏸" : "⏵"; 
   UI.led.classList.toggle("recording", STATE.isRecordPath); 
 }
-function deletePath() { 
-  SCENE.el.querySelectorAll("a-circle.trajectory-point").forEach(p => p.parentNode?.removeChild(p)); 
-}
+// deletePath() is defined below in the Trajectory section
 
 // ─── Quantum numbers & selection rules ───────────────────────
 const LEVEL_CAMERA = { 
@@ -385,14 +560,15 @@ const LEVEL_CAMERA = {
 };
 function applyLevelCamera() { 
   const c = LEVEL_CAMERA[STATE.N]; 
-  if (c) { STATE.radiation = c.radiation; 
+  if (c) { 
+    STATE.radiation = c.radiation; 
     SCENE.camera.setAttribute("position", { x:0, y:0, z:c.z }); 
   } 
 }
-function updateQuantumUI() {
-   UI.nLvl.textContent = String(STATE.N); 
-   UI.lLvl.textContent = String(STATE.L); 
-   if (UI.mLvl) UI.mLvl.textContent = String(STATE.M); 
+function updateQuantumUI() { 
+  UI.nLvl.textContent = String(STATE.N); 
+  UI.lLvl.textContent = String(STATE.L); 
+  if (UI.mLvl) UI.mLvl.textContent = String(STATE.M); 
 }
 
 function tryTransition(nN, nL, nM) {
@@ -438,14 +614,16 @@ function decrementM() {
 // ─── Relaxation ──────────────────────────────────────────────
 const RELAX_BASE_TICKS = 300;
 function toggleRelaxation(on) { 
-  STATE.isRelaxation = on !== undefined ? !!on : !STATE.isRelaxation; 
-  STATE._relaxTimer = 0; 
+  STATE.isRelaxation = on !== undefined ? 
+    !!on : 
+    !STATE.isRelaxation; STATE._relaxTimer = 0; 
 }
 function tickRelaxation() {
   if (!STATE.isRelaxation || STATE.N <= 1) return;
   STATE._relaxTimer++;
   if (STATE._relaxTimer >= Math.round(RELAX_BASE_TICKS / (STATE.N * STATE.N))) {
-    if (!tryTransition(STATE.N-1, STATE.L-1, STATE.M) && STATE.L===0) STATE._relaxTimer = 0;
+    if (!tryTransition(STATE.N-1, STATE.L-1, STATE.M) && STATE.L===0) 
+      STATE._relaxTimer = 0;
   }
 }
 
@@ -459,7 +637,7 @@ function changeCountProton(delta) {
   }
   else if (delta < 0) { 
     for (let i = STATE.particles.length-1; i >= 0; i--) { 
-      if (STATE.particles[i].type==="proton") { 
+      if (STATE.particles[i].type === "proton") { 
         const ring = STATE.bohrRings.pop(); 
         if (ring) SCENE.el.removeChild(ring); 
         const s = STATE.spheres[i]; 
@@ -482,9 +660,9 @@ function changeCountElectron(delta) {
   }
   else if (delta < 0) { 
     for (let i = STATE.particles.length-1; i >= 0; i--) { 
-      if (STATE.particles[i].type==="electron") { 
-        const s=STATE.spheres[i]; 
-        if(s)SCENE.el.removeChild(s); 
+      if (STATE.particles[i].type === "electron") { 
+        const s = STATE.spheres[i]; 
+        if (s) SCENE.el.removeChild(s); 
         STATE.spheres.splice(i,1); 
         STATE.particles.splice(i,1); 
         break; 
@@ -496,9 +674,13 @@ function changeCountElectron(delta) {
 
 // ─── θ/φ quantum terms ───────────────────────────────────────
 function d2ThetaLnPsi(n, l, theta) {
-  const c2 = Math.cos(theta)**2, s2 = Math.sin(theta)**2;
+  const c2 = Math.cos(theta)**2, 
+  s2 = Math.sin(theta)**2;
   if (n===2 && l===1) return -1/(c2||1e-9);
-  if (n===3 && l===2) { const d=3*c2-1; return 6*(s2-2)/((d*d)||1e-9); }
+  if (n===3 && l===2) { 
+    const d=3*c2-1; 
+    return 6*(s2-2)/((d*d)||1e-9); 
+  }
   return 0;
 }
 function d2PhiLnPsi() { return 0; }
@@ -532,7 +714,6 @@ function d2PhiLnPsi() { return 0; }
 const SOFTENING = 1e-4;  // a.u.
 
 function animation() {
-  updateDistanceAndEnergy();
   if (!STATE.isAnimationRunning || STATE.particles.length === 0) return;
   STATE._tick++;
   tickRelaxation();
@@ -587,7 +768,9 @@ function animation() {
       if (Lterm) {
         _v.perp.set(-dy, dx, 0);
         const pLen = _v.perp.length();
-        if (pLen > 1e-12) { _v.perp.divideScalar(pLen); pi.acc.addScaledVector(_v.perp, Fspin / pi.mass); }
+        if (pLen > 1e-12) { 
+          _v.perp.divideScalar(pLen); pi.acc.addScaledVector(_v.perp, Fspin / pi.mass); 
+        }
       }
     }
   }
@@ -595,52 +778,156 @@ function animation() {
   // ── Phase 2: Integrate ──
   for (let i = 0; i < pArr.length; i++) {
     const pi = pArr[i];
-    if (STATE.isNucleusLocked && pi.type === "proton") { pi.vel.set(0,0,0); continue; }
+    if (STATE.isNucleusLocked && pi.type === "proton") { 
+      pi.vel.set(0,0,0); 
+      continue; 
+    }
     if (STATE.isLarmor && pi.type === "electron") pi.vel.multiplyScalar(Math.exp(-1e-3 * dt));
     pi.vel.addScaledVector(pi.acc, dt);
     pi.pos.addScaledVector(pi.vel, dt * STATE.radiation);
   }
-
-  // ── Force readout (throttled) ──
-  if (STATE._tick % STATE._uiEvery === 0) {
-    for (const pi of pArr) {
-      if (pi.type !== "electron") continue;
-      UI.fx.textContent = (pi.acc.x * pi.mass).toExponential(2) + " Eₕ/a₀";
-      UI.fy.textContent = (pi.acc.y * pi.mass).toExponential(2) + " Eₕ/a₀";
-      UI.fz.textContent = (pi.acc.z * pi.mass).toExponential(2) + " Eₕ/a₀";
-      break;
-    }
-  }
 }
 
-// ─── Timer ───────────────────────────────────────────────────
-let interval = setInterval(animation, STATE.dtMs);
+// ═════════════════════════════════════════════════════════════
+//  MAIN LOOP: rAF-driven with sub-stepping
+//  ─────────────────────────────────────────
+//  A single requestAnimationFrame loop handles both physics
+//  and rendering.  Each frame:
+//    1. Compute how many physics sub-steps fit in dtMs
+//    2. Run animation() that many times (stable, no drift)
+//    3. Sync 3D entities & record trajectory
+//
+//  Benefits over setInterval:
+//  - No timer drift (rAF is V-synced)
+//  - Physics & render always in sync
+//  - Sub-stepping: lower dtMs → more steps/frame → smoother
+//  - Pauses automatically when tab is hidden (saves CPU)
+// ═════════════════════════════════════════════════════════════
+
+let _lastFrameTime = 0;
+let _physicsAccumulator = 0;
+
 function changeInterval(newDt) {
-  const v = Number(newDt); if (!Number.isFinite(v) || v <= 0) return;
-  STATE.dtMs = v; clearInterval(interval); interval = setInterval(animation, v);
+  const v = Number(newDt);
+  if (!Number.isFinite(v) || v <= 0) return;
+  STATE.dtMs = v;
 }
 
-// ─── Render loop ─────────────────────────────────────────────
-function intoRealWorld() {
+// ─── Trajectory: InstancedMesh ───────────────────────────────
+// Instead of creating hundreds of individual <a-circle> DOM
+// nodes, we use a single THREE.InstancedMesh with a shared
+// SphereGeometry.  This is orders of magnitude faster for
+// large trajectories (1000+ points vs 1000+ DOM elements).
+
+const TRAJ_MAX_POINTS = 4096;    // max trajectory points
+const TRAJ_RADIUS = 1;       // scene units
+
+const _trajState = {
+  mesh: null,                  // THREE.InstancedMesh (created lazily)
+  count: 0,                     // current number of active points
+  dummy: new THREE.Object3D(),  // reusable for setMatrixAt
+};
+
+/** Get or create the InstancedMesh, attached to the A-Frame scene's three.js object */
+function getTrajMesh() {
+  if (_trajState.mesh) return _trajState.mesh;
+
+  // Wait for A-Frame scene to be ready
+  const sceneObj = SCENE.el?.object3D;
+  if (!sceneObj) return null;
+
+  const geo = new THREE.SphereGeometry(TRAJ_RADIUS, 4, 4);  // low-poly = fast
+  const mat = new THREE.MeshBasicMaterial({ color: 0x888888, transparent: true, opacity: 0.6 });
+  const mesh = new THREE.InstancedMesh(geo, mat, TRAJ_MAX_POINTS);
+  mesh.count = 0;         // start with 0 visible instances
+  mesh.frustumCulled = false;
+  sceneObj.add(mesh);
+
+  _trajState.mesh = mesh;
+  return mesh;
+}
+
+function addTrajPoint(x, y, z) {
+  const mesh = getTrajMesh();
+  if (!mesh) return;
+
+  if (_trajState.count >= TRAJ_MAX_POINTS) {
+    // Ring buffer: overwrite oldest point
+    _trajState.count = 0;
+  }
+
+  _trajState.dummy.position.set(x, y, z);
+  _trajState.dummy.updateMatrix();
+  mesh.setMatrixAt(_trajState.count, _trajState.dummy.matrix);
+  _trajState.count++;
+  mesh.count = Math.max(mesh.count, _trajState.count);
+  mesh.instanceMatrix.needsUpdate = true;
+}
+
+function deletePath() {
+  // Clear InstancedMesh
+  if (_trajState.mesh) {
+    _trajState.mesh.count = 0;
+    _trajState.count = 0;
+    _trajState.mesh.instanceMatrix.needsUpdate = true;
+  }
+  // Also remove any legacy <a-circle> nodes
+  SCENE.el.querySelectorAll("a-circle.trajectory-point")
+    .forEach(p => p.parentNode?.removeChild(p));
+}
+
+// ─── Unified rAF loop ────────────────────────────────────────
+function mainLoop(timestamp) {
   if (typeof frames === "number") frames++;
+
+  // Compute elapsed time since last frame
+  if (_lastFrameTime === 0) _lastFrameTime = timestamp;
+  const elapsed = Math.min(timestamp - _lastFrameTime, 200); // cap at 200ms to avoid spiral of death
+  _lastFrameTime = timestamp;
+
+  // Sub-step physics
+  _physicsAccumulator += elapsed;
+  const maxSteps = 10;  // safety cap
+  let steps = 0;
+  while (_physicsAccumulator >= STATE.dtMs && steps < maxSteps) {
+    animation();
+    _physicsAccumulator -= STATE.dtMs;
+    steps++;
+  }
+
+  // Render & UI updates
   if (STATE.particles.length > 0) {
     syncEntitiesToParticles();
+
+    // Force & energy readout (throttled by frame count)
+    if (typeof frames === "number" && frames % 3 === 0) {
+      updateDistanceAndEnergy();
+      for (const pi of STATE.particles) {
+        if (pi.type !== "electron") continue;
+        UI.fx.textContent = (pi.acc.x * pi.mass).toExponential(2) + " Eₕ/a₀";
+        UI.fy.textContent = (pi.acc.y * pi.mass).toExponential(2) + " Eₕ/a₀";
+        UI.fz.textContent = (pi.acc.z * pi.mass).toExponential(2) + " Eₕ/a₀";
+        break;
+      }
+    }
+
+    // Record trajectory using InstancedMesh
     if (STATE.isRecordPath && typeof frames === "number" && frames % 5 === 0) {
       const S = SCENE_SCALE;
       for (const pi of STATE.particles) {
         if (pi.type !== "electron") continue;
-        const pt = createEntity("a-circle", { radius: 1, color: "grey" });
-        pt.classList.add("trajectory-point");
-        pt.object3D.position.set(pi.pos.x*S, pi.pos.y*S, pi.pos.z*S);
-        SCENE.el.appendChild(pt);
+        addTrajPoint(pi.pos.x * S, pi.pos.y * S, pi.pos.z * S);
       }
     }
   }
-  requestAnimationFrame(intoRealWorld);
+
+  requestAnimationFrame(mainLoop);
 }
-requestAnimationFrame(intoRealWorld);
+requestAnimationFrame(mainLoop);
 
 // ─── Public API ──────────────────────────────────────────────
+const intoRealWorld = mainLoop;  // backward compat alias
+
 window.cartInPolar = cartInPolar;
 window.startAnimation = startAnimation;
 window.toggleLamor = toggleLamor;
@@ -660,6 +947,7 @@ window.deletePath = deletePath;
 window.animation = animation;
 window.changeInterval = changeInterval;
 window.intoRealWorld = intoRealWorld;
+window.mainLoop = mainLoop;
 window.incrementEnergyLevel = incrementEnergyLevel;
 window.decrementEnergyLevel = decrementEnergyLevel;
 window.incrementAngularMomentum = incrementAngularMomentum;
