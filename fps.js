@@ -30,6 +30,10 @@ AFRAME.registerComponent('generate-data', {
     // Emit the FPS value as an event
     this.el.emit("event1", { fps: fps.toFixed(2) });
 
+    // Update FPS display in UI
+    const fpsEl = document.getElementById('fpsRead');
+    if (fpsEl) fpsEl.textContent = fps.toFixed(0);
+
     // Reset the frame counter
     frames = 0;
     this.startTime = currentTime;

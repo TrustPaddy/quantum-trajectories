@@ -57,6 +57,16 @@
     .title{font-weight:700;letter-spacing:.2px}
     .spacer{flex:1}
     .group{display:inline-flex;align-items:center;gap:.5rem}
+    .section{
+      display:inline-flex;align-items:center;gap:.5rem;
+      padding:.3rem .6rem;border-radius:10px;
+      background:rgba(255,255,255,.03);
+      border:1px solid rgba(255,255,255,.06);
+    }
+    .section-label{
+      font-size:.8rem;opacity:.7;font-weight:600;
+      margin-right:.2rem;
+    }
 
     .wrap{display:grid;grid-template-columns:minmax(260px,320px) 1fr;gap:14px;padding:14px}
     .panel{
@@ -92,6 +102,17 @@
     .btn.toggle[aria-pressed="true"],.btn.toggle.active{
       border-color:rgba(125,211,252,.7);box-shadow:var(--shadow)
     }
+    .btn.recording{
+      background:linear-gradient(135deg,rgba(34,197,94,.15),rgba(34,197,94,.25));
+      border-color:rgba(34,197,94,.4);
+      color:#22c55e;
+      box-shadow:0 0 20px rgba(34,197,94,.3),0 0 40px rgba(34,197,94,.15),inset 0 0 15px rgba(34,197,94,.1);
+      animation:pulse-glow 2s ease-in-out infinite;
+    }
+    @keyframes pulse-glow{
+      0%,100%{box-shadow:0 0 20px rgba(34,197,94,.3),0 0 40px rgba(34,197,94,.15),inset 0 0 15px rgba(34,197,94,.1)}
+      50%{box-shadow:0 0 25px rgba(34,197,94,.4),0 0 50px rgba(34,197,94,.2),inset 0 0 20px rgba(34,197,94,.15)}
+    }
 
     /* ─── Range slider ─────────────────────────────────────── */
     .range{appearance:none;width:160px;height:6px;border-radius:999px;background:var(--range-track);outline:none}
@@ -116,11 +137,6 @@
     /* ─── Readout grid ─────────────────────────────────────── */
     .readout{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-top:6px}
 
-    /* ─── Recording LED ────────────────────────────────────── */
-    #led{width:10px;height:10px;border-radius:50%;background:#334155;display:inline-block;
-      box-shadow:0 0 0 0 rgba(239,68,68,0);transition:box-shadow .3s,background .3s}
-    #led.recording{background:var(--ok);box-shadow:0 0 0 6px rgba(34,197,94,.15)}
-
     /* ─── Hidden fields ────────────────────────────────────── */
     .hidden-field{display:inline-flex;gap:6px;align-items:center}
     .hidden-field input{width:70px;background:transparent;border:1px solid rgba(255,255,255,.12);
@@ -137,44 +153,127 @@
       background:rgba(125,211,252,.06);border:1px solid rgba(125,211,252,.15);
       border-radius:8px;text-align:center;
     }
+
+    /* ─── Section dividers ─────────────────────────────────── */
+    .section-divider{
+      margin:16px 0 8px;padding-bottom:4px;
+      border-bottom:1px solid rgba(255,255,255,.08);
+    }
+    .section-title{
+      font-size:.85rem;font-weight:700;color:var(--acc);
+      text-transform:uppercase;letter-spacing:.5px;
+    }
+
+    /* ─── Help Panel ───────────────────────────────────────── */
+    .help-panel{
+      border:1px solid rgba(255,255,255,.08);border-radius:10px;
+      background:var(--card);margin-bottom:12px;
+    }
+    .help-panel summary{
+      padding:.6rem .75rem;cursor:pointer;font-weight:600;
+      list-style:none;user-select:none;border-radius:10px;
+      transition:.2s;display:flex;align-items:center;gap:.5rem;
+    }
+    .help-panel summary::-webkit-details-marker{display:none}
+    .help-panel summary::before{
+      content:'▸';font-size:.9em;transition:transform .2s;
+      display:inline-block;
+    }
+    .help-panel[open] summary::before{transform:rotate(90deg)}
+    .help-panel summary:hover{background:rgba(255,255,255,.04)}
+    .help-content{
+      padding:0 .75rem .75rem;font-size:.9rem;line-height:1.5;
+      color:var(--muted);
+    }
+    .help-content h4{
+      color:var(--txt);margin:.75rem 0 .35rem;font-size:.95rem;
+      font-weight:600;
+    }
+    .help-content ul{margin:.3rem 0;padding-left:1.2rem}
+    .help-content li{margin:.2rem 0}
+    .help-content strong{color:var(--txt);font-weight:600}
+    .help-content code{
+      background:rgba(125,211,252,.1);padding:.1rem .35rem;
+      border-radius:4px;font-size:.85em;color:var(--acc);
+    }
+
+    /* ─── Toast Notifications ──────────────────────────────── */
+    #toast-container{
+      position:fixed;top:80px;left:50%;transform:translateX(-50%);
+      z-index:999;display:flex;flex-direction:column;gap:8px;
+      pointer-events:none;max-width:500px;width:90%;
+    }
+    .toast{
+      background:var(--panel);border:1px solid rgba(255,255,255,.12);
+      border-radius:10px;padding:.65rem .9rem;box-shadow:var(--shadow);
+      display:flex;align-items:center;gap:.6rem;
+      animation:slideIn .3s ease-out;pointer-events:auto;
+    }
+    .toast.error{border-color:rgba(239,68,68,.5);background:rgba(239,68,68,.08)}
+    .toast.warning{border-color:rgba(245,158,11,.5);background:rgba(245,158,11,.08)}
+    .toast.success{border-color:rgba(34,197,94,.5);background:rgba(34,197,94,.08)}
+    .toast.info{border-color:rgba(125,211,252,.5);background:rgba(125,211,252,.08)}
+    .toast-icon{font-size:1.2em;flex-shrink:0}
+    .toast-message{flex:1;font-size:.9rem}
+    @keyframes slideIn{
+      from{opacity:0;transform:translateY(-20px)}
+      to{opacity:1;transform:translateY(0)}
+    }
+
+    /* ─── Cursor states for drag ───────────────────────────── */
+    a-scene{cursor:default}
+    a-scene.hovering-particle{cursor:grab}
+    a-scene.dragging-particle{cursor:grabbing!important}
   </style>
 </head>
 <body>
+  <!-- Toast Container -->
+  <div id="toast-container"></div>
+
   <div class="app">
 
     <!-- ═══ Topbar ═══ -->
     <div class="topbar">
       <span class="title">⚛︎ Simulation</span>
-      <button id="myButton" class="btn primary" title="Start / Stop">Start</button>
-      <button id="PathButton" class="btn" title="Pfad aufzeichnen">⏵</button>
-      <span id="led" title="Animation läuft?"></span>
-      <button id="btnDeletePath" class="btn warn" title="Pfad löschen">Pfad löschen</button>
-      <button id="btnResetV" class="btn" title="Geschwindigkeiten = 0">v = 0</button>
 
-      <button id="btnAnsatz"   class="btn toggle" aria-pressed="false" title="Angular Momentum Ansatz">Ang. Mom.</button>
-      <button id="btnLarmor"   class="btn toggle" aria-pressed="false" title="Larmor-Strahlung">Larmor</button>
-      <button id="btnThetaPhi" class="btn toggle" aria-pressed="false" title="θ/φ-Quantenterme">θ/φ</button>
-      <button id="btnLock"     class="btn toggle" aria-pressed="false" title="Nucleus lock">Lock</button>
-      <button id="btnRelax"    class="btn toggle" aria-pressed="false" title="Automatische Relaxation">Relax</button>
+      <!-- Simulation Controls -->
+      <div class="section">
+        <button id="myButton" class="btn primary" title="Start / Stop">Start</button>
+        <button id="PathButton" class="btn" title="Record Path">▶</button>
+        <button id="btnDeletePath" class="btn" title="Clear Path">Clear Path</button>
+        <button id="btnResetV" class="btn" title="Reset Velocities to Zero">v = 0</button>
+      </div>
 
-      <div class="group" style="margin-left:.4rem">
-        <label for="dtSlider" style="opacity:.85">Δt</label>
-        <input id="dtSlider" class="range" type="range" min="5" max="200" step="1" value="33" />
-        <span id="dtValue" class="chip" style="padding:.2rem .45rem">33 ms</span>
+      <!-- Physics Modes -->
+      <div class="section">
+        <span class="section-label">Physics:</span>
+        <button id="btnAnsatz"   class="btn toggle" aria-pressed="false" title="Angular Momentum Ansatz">Ang. Mom.</button>
+        <button id="btnLarmor"   class="btn toggle" aria-pressed="false" title="Larmor Radiation">Larmor</button>
+        <button id="btnThetaPhi" class="btn toggle" aria-pressed="false" title="θ/φ Quantum Terms">θ/φ</button>
+        <button id="btnLock"     class="btn toggle" aria-pressed="false" title="Nucleus Lock">Lock</button>
+        <button id="btnRelax"    class="btn toggle" aria-pressed="false" title="Automatic Relaxation">Relax</button>
       </div>
 
       <div class="spacer"></div>
 
-      <label>Modell
-        <select id="modelSelect" class="select">
-          <option value="HAtom">H Atom</option>
-          <option value="H2Cation">H₂⁺</option>
-          <option value="HAnion">H⁻</option>
-          <option value="HECation">He⁺</option>
-          <option value="HEAtom">He</option>
-        </select>
-      </label>
-      <button id="themeToggle" class="btn ghost" title="Hell/Dunkel umschalten">☾</button>
+      <!-- Settings -->
+      <div class="section">
+        <span class="section-label">Settings:</span>
+        <label for="dtSlider" style="opacity:.85">Δt</label>
+        <input id="dtSlider" class="range" type="range" min="5" max="200" step="1" value="33" />
+        <span id="dtValue" class="chip" style="padding:.2rem .45rem">33 ms</span>
+
+        <label style="margin-left:.5rem">Model
+          <select id="modelSelect" class="select">
+            <option value="HAtom">H Atom</option>
+            <option value="H2Cation">H₂⁺</option>
+            <option value="HAnion">H⁻</option>
+            <option value="HECation">He⁺</option>
+            <option value="HEAtom">He</option>
+          </select>
+        </label>
+        <button id="themeToggle" class="btn ghost" title="Toggle Light/Dark Theme">☾</button>
+      </div>
     </div>
 
     <!-- ═══ Main content ═══ -->
@@ -183,13 +282,55 @@
       <!-- ─── Control Panel ─── -->
       <aside class="panel">
 
-        <!-- Quantum state display -->
+        <!-- Help Panel -->
+        <details class="help-panel">
+          <summary>ℹ️ Help & Controls</summary>
+          <div class="help-content">
+            <h4>Getting Started</h4>
+            <ul>
+              <li><strong>Start/Stop:</strong> Click the Start button to begin the simulation</li>
+              <li><strong>Drag Particles:</strong> Click and drag any particle to reposition it in 3D space</li>
+              <li><strong>Record Paths:</strong> Click ▶ to record electron trajectories (button glows green)</li>
+            </ul>
+
+            <h4>Physics Modes</h4>
+            <ul>
+              <li><strong>Ang. Mom.:</strong> Enables angular momentum term in force calculation</li>
+              <li><strong>Larmor:</strong> Applies radiation damping (exponential velocity decay)</li>
+              <li><strong>θ/φ:</strong> Adds quantum angular correction terms from wavefunction</li>
+              <li><strong>Lock:</strong> Freezes nucleus in place (protons don't move)</li>
+              <li><strong>Relax:</strong> Automatic energy level transitions (electrons decay to lower states)</li>
+            </ul>
+
+            <h4>Quantum Numbers</h4>
+            <ul>
+              <li><strong>n:</strong> Principal quantum number (energy level, n ≥ 1)</li>
+              <li><strong>ℓ:</strong> Orbital angular momentum (0 ≤ ℓ < n)</li>
+              <li><strong>m:</strong> Magnetic quantum number (-ℓ ≤ m ≤ ℓ)</li>
+              <li><strong>Selection rules:</strong> Δℓ = ±1, Δm ≤ ±1 for transitions</li>
+            </ul>
+
+            <h4>Controls</h4>
+            <ul>
+              <li><strong>e⁻/p⁺:</strong> Add/remove electrons or protons</li>
+              <li><strong>x/y/z inputs:</strong> Manually set particle position in picometers</li>
+              <li><strong>Δt slider:</strong> Adjust simulation timestep (smaller = more accurate but slower)</li>
+              <li><strong>Model:</strong> Switch between different atomic systems (H, H₂⁺, He, etc.)</li>
+            </ul>
+          </div>
+        </details>
+
+        <!-- ═══ QUANTUM STATE ═══ -->
+        <div class="section-divider">
+          <span class="section-title">Quantum State</span>
+        </div>
+
         <div class="quantum-label" id="quantumStateLabel">|1, 0, 0⟩</div>
 
         <!-- Distance & Energy -->
         <div class="readout" style="margin-top:10px">
-          <div class="chip">Abstand: <strong id="Distance">–</strong></div>
-          <div class="chip">Energie: <strong id="Energy">–</strong></div>
+          <div class="chip">Distance: <strong id="Distance">–</strong></div>
+          <div class="chip">Energy: <strong id="Energy">–</strong></div>
         </div>
 
         <!-- Quantum numbers: n, ℓ, m -->
@@ -214,6 +355,11 @@
           </div>
         </div>
 
+        <!-- ═══ SYSTEM PROPERTIES ═══ -->
+        <div class="section-divider">
+          <span class="section-title">System Properties</span>
+        </div>
+
         <!-- Particle counts -->
         <div class="readout">
           <div class="chip ctr">
@@ -230,29 +376,54 @@
           </div>
         </div>
 
-        <!-- Force readout -->
-        <div class="readout">
-          <div class="chip">F<sub>x</sub>: <strong id="fx">0</strong></div>
-          <div class="chip">F<sub>y</sub>: <strong id="fy">0</strong></div>
-          <div class="chip">F<sub>z</sub>: <strong id="fz">0</strong></div>
-        </div>
-
-        <!-- Electron positions -->
-        <div class="readout">
-          <div class="chip">e₁ x: <strong id="posx1">–</strong></div>
-          <div class="chip">e₁ y: <strong id="y1">–</strong></div>
-          <div class="chip">e₁ z: <strong id="z1">–</strong></div>
-          <div class="chip">e₂ x: <strong id="x2">–</strong></div>
-          <div class="chip">e₂ y: <strong id="y2">–</strong></div>
-          <div class="chip">e₂ z: <strong id="z2">–</strong></div>
+        <!-- ═══ SELECTED PARTICLE ═══ -->
+        <div class="section-divider">
+          <span class="section-title">Selected Particle</span>
         </div>
 
         <!-- Manual position input -->
-        <div class="readout" style="margin-top:10px">
+        <div class="readout">
           <div class="hidden-field">x <input id="Xs" type="text" placeholder="x (pm)"></div>
           <div class="hidden-field">y <input id="Ys" type="text" placeholder="y (pm)"></div>
           <div class="hidden-field">z <input id="Zs" type="text" placeholder="z (pm)"></div>
         </div>
+
+        <!-- ═══ DEBUG INFO ═══ -->
+        <details class="help-panel" style="margin-top:12px">
+          <summary>🔬 Advanced / Debug Info</summary>
+          <div class="help-content">
+
+            <!-- Force vectors -->
+            <h4>Force (first electron)</h4>
+            <div class="readout">
+              <div class="chip">F<sub>x</sub>: <strong id="fx">0</strong></div>
+              <div class="chip">F<sub>y</sub>: <strong id="fy">0</strong></div>
+              <div class="chip">F<sub>z</sub>: <strong id="fz">0</strong></div>
+            </div>
+
+            <!-- All electron positions -->
+            <h4>All Electron Positions</h4>
+            <div class="readout">
+              <div class="chip">e₁ x: <strong id="x1">–</strong></div>
+              <div class="chip">e₁ y: <strong id="y1">–</strong></div>
+              <div class="chip">e₁ z: <strong id="z1">–</strong></div>
+              <div class="chip">e₂ x: <strong id="x2">–</strong></div>
+              <div class="chip">e₂ y: <strong id="y2">–</strong></div>
+              <div class="chip">e₂ z: <strong id="z2">–</strong></div>
+            </div>
+
+            <!-- Velocity -->
+            <h4>Velocity (selected particle)</h4>
+            <div class="readout">
+              <div class="chip">v<sub>x</sub>: <strong id="vx">0</strong></div>
+              <div class="chip">v<sub>y</sub>: <strong id="vy">0</strong></div>
+              <div class="chip">v<sub>z</sub>: <strong id="vz">0</strong></div>
+              <div class="chip">|v|: <strong id="vMag">0</strong></div>
+            </div>
+
+          </div>
+        </details>
+
       </aside>
 
       <!-- ─── 3D Scene ─── -->
@@ -267,12 +438,13 @@
         </a-scene>
 
         <div class="hud">
+          <div class="chip">FPS: <strong id="fpsRead">--</strong></div>
           <div class="chip">Δt: <strong id="dtRead">33 ms</strong></div>
-          <div class="chip">Ang. Mom.: <strong id="ansatzRead">aus</strong></div>
-          <div class="chip">Larmor: <strong id="larmorRead">aus</strong></div>
-          <div class="chip">Lock: <strong id="lockRead">aus</strong></div>
-          <div class="chip">θ/φ: <strong id="thetaPhiRead">aus</strong></div>
-          <div class="chip">Relax: <strong id="relaxRead">aus</strong></div>
+          <div class="chip">Ang. Mom.: <strong id="ansatzRead">off</strong></div>
+          <div class="chip">Larmor: <strong id="larmorRead">off</strong></div>
+          <div class="chip">Lock: <strong id="lockRead">off</strong></div>
+          <div class="chip">θ/φ: <strong id="thetaPhiRead">off</strong></div>
+          <div class="chip">Relax: <strong id="relaxRead">off</strong></div>
         </div>
       </main>
     </div>
@@ -285,6 +457,35 @@
   <!-- ═══ UI Wiring ═══ -->
   <script>
     (function(){
+      // ── Toast Notification System ──
+      window.showToast = function(message, type = 'info') {
+        const container = document.getElementById('toast-container');
+        if (!container) return;
+
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+
+        const icons = {
+          error: '❌',
+          warning: '⚠️',
+          success: '✅',
+          info: 'ℹ️'
+        };
+
+        toast.innerHTML = `
+          <span class="toast-icon">${icons[type] || icons.info}</span>
+          <span class="toast-message">${message}</span>
+        `;
+
+        container.appendChild(toast);
+
+        // Auto-dismiss after 3 seconds
+        setTimeout(() => {
+          toast.style.animation = 'slideIn .3s ease-out reverse';
+          setTimeout(() => toast.remove(), 300);
+        }, 3000);
+      };
+
       // ── Fallback guards ──
       const API = [
         'startAnimation','startRecord','deletePath','setVelocitiesToZero',
@@ -345,23 +546,23 @@
       // ── Toggle buttons ──
       bindToggle('btnAnsatz', next => {
         window.changeAnsatz();
-        document.getElementById('ansatzRead').textContent = next ? 'an' : 'aus';
+        document.getElementById('ansatzRead').textContent = next ? 'on' : 'off';
       });
       bindToggle('btnLarmor', next => {
         window.toggleLamor(next);
-        document.getElementById('larmorRead').textContent = next ? 'an' : 'aus';
+        document.getElementById('larmorRead').textContent = next ? 'on' : 'off';
       });
       bindToggle('btnThetaPhi', next => {
         window.toggleThetaPhi(next);
-        document.getElementById('thetaPhiRead').textContent = next ? 'an' : 'aus';
+        document.getElementById('thetaPhiRead').textContent = next ? 'on' : 'off';
       });
       bindToggle('btnLock', next => {
         window.lockNucleus();
-        document.getElementById('lockRead').textContent = next ? 'an' : 'aus';
+        document.getElementById('lockRead').textContent = next ? 'on' : 'off';
       });
       bindToggle('btnRelax', next => {
         window.toggleRelaxation(next);
-        document.getElementById('relaxRead').textContent = next ? 'an' : 'aus';
+        document.getElementById('relaxRead').textContent = next ? 'on' : 'off';
       });
 
       // ── Δt slider ──

@@ -1,5 +1,5 @@
 "use strict";
-
+// Test comment
 // ═════════════════════════════════════════════════════════════
 //  ATOMIC UNITS (a.u.)
 //  ───────────────────
@@ -87,27 +87,38 @@ function findNonCollidingPosition(type, generator) {
 const UI = {
   Distance: document.getElementById("Distance"),
   Energy:   document.getElementById("Energy"),
-  posx1: document.getElementById("posx1"), 
-  y1: document.getElementById("y1"), 
+  x1: document.getElementById("x1"),  // FIX: was posx1
+  y1: document.getElementById("y1"),
   z1: document.getElementById("z1"),
-  x2: document.getElementById("x2"), 
-  y2: document.getElementById("y2"), 
+  x2: document.getElementById("x2"),
+  y2: document.getElementById("y2"),
   z2: document.getElementById("z2"),
-  nLvl: document.getElementById("nLvl"), 
-  lLvl: document.getElementById("lLvl"), 
+  nLvl: document.getElementById("nLvl"),
+  lLvl: document.getElementById("lLvl"),
   mLvl: document.getElementById("mLvl"),
   DispCountElectron: document.getElementById("DispCountElectron"),
   DispCountProton:   document.getElementById("DispCountProton"),
-  Xs: document.getElementById("Xs"), 
-  Ys: document.getElementById("Ys"), 
+  Xs: document.getElementById("Xs"),
+  Ys: document.getElementById("Ys"),
   Zs: document.getElementById("Zs"),
-  led: document.getElementById("led"), 
   myButton: document.getElementById("myButton"),
   pathButton: document.getElementById("PathButton"),
-  fx: document.getElementById("fx"), 
-  fy: document.getElementById("fy"), 
+  fx: document.getElementById("fx"),
+  fy: document.getElementById("fy"),
   fz: document.getElementById("fz"),
   relaxRead: document.getElementById("relaxRead"),
+  // Selected particle display
+  selectedX: document.getElementById("selectedX"),
+  selectedY: document.getElementById("selectedY"),
+  selectedZ: document.getElementById("selectedZ"),
+  // Velocity display
+  vx: document.getElementById("vx"),
+  vy: document.getElementById("vy"),
+  vz: document.getElementById("vz"),
+  vMag: document.getElementById("vMag"),
+  // Panel-specific readouts
+  dtPanelRead: document.getElementById("dtPanelRead"),
+  fpsPanelRead: document.getElementById("fpsPanelRead"),
 };
 const SCENE = { 
   el: document.querySelector("a-scene"), 
@@ -168,18 +179,8 @@ function addParticleEntity(particle, opts = {}) {
     color: opts.color ?? (particle.type === "proton" ? "red" : "blue"),
     class: "clickable",
   });
-  SCENE.el.appendChild(sphere); 
+  SCENE.el.appendChild(sphere);
   STATE.spheres.push(sphere);
-  const idx = STATE.spheres.length - 1;
-  sphere.addEventListener("click", () => {
-    STATE.indexOfParticle = idx;
-    const p = STATE.particles[idx];
-    if (p) { 
-      UI.Xs.value = (p.pos.x * SI.a0 * 1e12).toFixed(2); 
-      UI.Ys.value = (p.pos.y * SI.a0 * 1e12).toFixed(2); 
-      UI.Zs.value = (p.pos.z * SI.a0 * 1e12).toFixed(2); 
-    }
-  });
 }
 
 function addBohrRing() {
@@ -211,7 +212,7 @@ function syncEntitiesToParticles() {
     }
     if (p.type === "electron") {
       if (i === 1) { 
-        UI.posx1.textContent = (p.pos.x * pm).toFixed(3); 
+        UI.x1.textContent = (p.pos.x * pm).toFixed(3); 
         UI.y1.textContent = (p.pos.y * pm).toFixed(3); 
         UI.z1.textContent = (p.pos.z * pm).toFixed(3); 
       }
@@ -223,9 +224,39 @@ function syncEntitiesToParticles() {
     }
   }
   if (!STATE.particles[1] || STATE.particles[1].type !== "electron") 
-    UI.posx1.textContent = UI.y1.textContent = UI.z1.textContent = "-";
+    UI.x1.textContent = UI.y1.textContent = UI.z1.textContent = "-";
   if (!STATE.particles[2] || STATE.particles[2].type !== "electron") 
     UI.x2.textContent = UI.y2.textContent = UI.z2.textContent = "-";
+}
+
+function updateSelectedParticleDisplay() {
+  const idx = STATE.indexOfParticle;
+  if (idx < 0 || !STATE.particles[idx]) {
+    if (UI.selectedX) UI.selectedX.textContent = "–";
+    if (UI.selectedY) UI.selectedY.textContent = "–";
+    if (UI.selectedZ) UI.selectedZ.textContent = "–";
+    if (UI.vx) UI.vx.textContent = "0";
+    if (UI.vy) UI.vy.textContent = "0";
+    if (UI.vz) UI.vz.textContent = "0";
+    if (UI.vMag) UI.vMag.textContent = "0";
+    return;
+  }
+
+  const p = STATE.particles[idx];
+  const pm = SI.a0 * 1e12;
+
+  // Position
+  if (UI.selectedX) UI.selectedX.textContent = (p.pos.x * pm).toFixed(3);
+  if (UI.selectedY) UI.selectedY.textContent = (p.pos.y * pm).toFixed(3);
+  if (UI.selectedZ) UI.selectedZ.textContent = (p.pos.z * pm).toFixed(3);
+
+  // Velocity
+  if (UI.vx) UI.vx.textContent = (p.vel.x * V_AU).toExponential(2);
+  if (UI.vy) UI.vy.textContent = (p.vel.y * V_AU).toExponential(2);
+  if (UI.vz) UI.vz.textContent = (p.vel.z * V_AU).toExponential(2);
+
+  const vMag = Math.sqrt(p.vel.x**2 + p.vel.y**2 + p.vel.z**2);
+  if (UI.vMag) UI.vMag.textContent = (vMag * V_AU).toExponential(2);
 }
 
 // ─── Drag & Drop ─────────────────────────────────────────────
@@ -294,8 +325,18 @@ function _onPointerDown(ev) {
   _drag.particleIdx = idx;
   STATE.indexOfParticle = idx;
 
-  // Set up drag plane: faces camera, passes through particle
+  // Update position input fields immediately
   const particle = STATE.particles[idx];
+  const pm = SI.a0 * 1e12;
+  UI.Xs.value = (particle.pos.x * pm).toFixed(2);
+  UI.Ys.value = (particle.pos.y * pm).toFixed(2);
+  UI.Zs.value = (particle.pos.z * pm).toFixed(2);
+
+  // Add dragging cursor class
+  const sceneEl = SCENE.el;
+  if (sceneEl) sceneEl.classList.add('dragging-particle');
+
+  // Set up drag plane: faces camera, passes through particle
   const worldPos = new THREE.Vector3(
     particle.pos.x * SCENE_SCALE,
     particle.pos.y * SCENE_SCALE,
@@ -323,8 +364,32 @@ function _onPointerDown(ev) {
 }
 
 function _onPointerMove(ev) {
-  if (!_drag.active) return;
   _updateMouse(ev);
+
+  // Hover feedback: show grab cursor when hovering over particles
+  if (!_drag.active) {
+    const cam = _getCameraObj();
+    const sceneEl = SCENE.el;
+    if (cam && sceneEl) {
+      _drag.raycaster.setFromCamera(_drag.mouse, cam);
+      const meshes = [];
+      for (let i = 0; i < STATE.spheres.length; i++) {
+        const obj = STATE.spheres[i]?.object3D;
+        if (obj) {
+          obj.traverse(child => {
+            if (child.isMesh) meshes.push(child);
+          });
+        }
+      }
+      const hits = _drag.raycaster.intersectObjects(meshes, false);
+      if (hits.length > 0) {
+        sceneEl.classList.add('hovering-particle');
+      } else {
+        sceneEl.classList.remove('hovering-particle');
+      }
+    }
+    return;
+  }
 
   const cam = _getCameraObj();
   if (!cam) return;
@@ -366,6 +431,10 @@ function _onPointerUp(ev) {
   if (sphere) sphere.setAttribute('material', 'emissive', '#000');
 
   _drag.active = false;
+
+  // Remove dragging cursor class
+  const sceneEl = SCENE.el;
+  if (sceneEl) sceneEl.classList.remove('dragging-particle');
 
   // Re-enable look-controls
   const lookControls = SCENE.camera?.getAttribute?.('look-controls');
@@ -545,18 +614,26 @@ function lockNucleus() {
     for (const p of STATE.particles) 
       if (p.type === "proton") 
         p.vel.set(0,0,0); }
-function startRecord() { 
-  STATE.isRecordPath = !STATE.isRecordPath; 
-  UI.pathButton.textContent = STATE.isRecordPath ? "⏸" : "⏵"; 
-  UI.led.classList.toggle("recording", STATE.isRecordPath); 
+function startRecord() {
+  STATE.isRecordPath = !STATE.isRecordPath;
+  if (STATE.isRecordPath) {
+    UI.pathButton.textContent = "⏹";
+    UI.pathButton.classList.add("recording");
+  } else {
+    UI.pathButton.textContent = "▶";
+    UI.pathButton.classList.remove("recording");
+  }
 }
 // deletePath() is defined below in the Trajectory section
 
 // ─── Quantum numbers & selection rules ───────────────────────
 const LEVEL_CAMERA = { 
   1: { radiation: 1, z: 200 }, 
-  2: { radiation: 0.999905, z: 250 }, 
-  3: { radiation: 0.99995, z: 400 } 
+  2: { radiation: 0.999905, z: 350 }, 
+  3: { radiation: 0.99995, z: 600 }, 
+  4: { radiation: 0.99998, z: 1000 }, 
+  5: { radiation: 0.99999, z: 1600 }, 
+  6: { radiation: 0.999995, z: 2200 } 
 };
 function applyLevelCamera() { 
   const c = LEVEL_CAMERA[STATE.N]; 
@@ -572,21 +649,48 @@ function updateQuantumUI() {
 }
 
 function tryTransition(nN, nL, nM) {
-  if (nN<1||nL<0||nL>=nN||Math.abs(nM)>nL) return false;
-  if (Math.abs(nL-STATE.L)!==1) { 
-    console.warn(`Δℓ=${nL-STATE.L} verboten`); 
-    return false; 
+  if (nN<1||nL<0||nL>=nN||Math.abs(nM)>nL) {
+    if (typeof window.showToast === 'function') {
+      window.showToast(`Invalid quantum numbers: ℓ must be < n, |m| ≤ ℓ`, 'error');
+    }
+    return false;
   }
-  if (Math.abs(nM-STATE.M)>1) { 
-    console.warn(`Δm=${nM-STATE.M} verboten`); 
-    return false; 
+  if (Math.abs(nL-STATE.L)!==1) {
+    console.warn(`Δℓ=${nL-STATE.L} verboten`);
+    if (typeof window.showToast === 'function') {
+      window.showToast(`Selection rule violated: Δℓ must be ±1 (current Δℓ = ${nL-STATE.L})`, 'warning');
+    }
+    return false;
   }
-  if (STATE.atomLabel===AtomModel.HAtom && STATE.isAngularMomentum && STATE.particles[1] && nN>STATE.N) {
-    STATE.particles[1].pos.multiplyScalar(4);
-    const conn = STATE.particles[0].pos.clone().sub(STATE.particles[1].pos);
-    STATE.particles[1].vel.add(new THREE.Vector3(-conn.y, conn.x, 0).normalize().multiplyScalar(0.02));
+  if (Math.abs(nM-STATE.M)>1) {
+    console.warn(`Δm=${nM-STATE.M} verboten`);
+    if (typeof window.showToast === 'function') {
+      window.showToast(`Selection rule violated: Δm must be ≤ ±1 (current Δm = ${nM-STATE.M})`, 'warning');
+    }
+    return false;
   }
+  // Rescale electron to new equilibrium radius
   STATE.N=nN; STATE.L=nL; STATE.M=nM; STATE._relaxTimer=0;
+  if (STATE.atomLabel === AtomModel.HAtom && STATE.particles[1]) {
+    const e = STATE.particles[1];
+    const nuc = STATE.particles[0];
+    const newR = bohrRadius(nN, nL, STATE.Z);
+    // Scale position to new equilibrium radius
+    const dir = e.pos.clone().sub(nuc.pos);
+    const dirLen = dir.length() || 1e-9;
+    dir.divideScalar(dirLen);
+    e.pos.copy(nuc.pos).addScaledVector(dir, newR);
+    // Set circular-orbit velocity for l > 0
+    e.vel.set(0, 0, 0);
+    if (nL > 0 && !STATE.isThetaPhi) {
+      // v_circ = sqrt(l(l+1)) / r  gives centripetal = l(l+1)/r^3
+      const vCirc = Math.sqrt(nL * (nL + 1)) / newR;
+      const perp = new THREE.Vector3(-dir.y, dir.x, 0);
+      const pLen = perp.length();
+      if (pLen > 1e-9) { perp.divideScalar(pLen); e.vel.addScaledVector(perp, vCirc); }
+    }
+    e.acc.set(0, 0, 0);
+  }
   applyLevelCamera(); updateQuantumUI(); return true;
 }
 
@@ -672,18 +776,128 @@ function changeCountElectron(delta) {
   UI.DispCountElectron.textContent = String(STATE.particles.filter(p => p.type==="electron").length);
 }
 
-// ─── θ/φ quantum terms ───────────────────────────────────────
-function d2ThetaLnPsi(n, l, theta) {
-  const c2 = Math.cos(theta)**2, 
-  s2 = Math.sin(theta)**2;
-  if (n===2 && l===1) return -1/(c2||1e-9);
-  if (n===3 && l===2) { 
-    const d=3*c2-1; 
-    return 6*(s2-2)/((d*d)||1e-9); 
+// ─── Radial quantum correction: d²_r ln R_{nl}(r) ────────────
+// Generalized Laguerre polynomial L^alpha_k(x) via recurrence
+function laguerreL(k, alpha, x) {
+  if (k === 0) return 1;
+  if (k === 1) return 1 + alpha - x;
+  let Lm2 = 1, Lm1 = 1 + alpha - x;
+  for (let j = 2; j <= k; j++) {
+    const Lj = ((2*j - 1 + alpha - x) * Lm1 - (j - 1 + alpha) * Lm2) / j;
+    Lm2 = Lm1; Lm1 = Lj;
   }
-  return 0;
+  return Lm1;
 }
-function d2PhiLnPsi() { return 0; }
+
+// Second derivative of ln(R_{nl}) w.r.t. r
+// R_{nl}(r) ~ rho^l * L^{2l+1}_{n-l-1}(rho) * exp(-rho/2),  rho = 2Zr/n
+// d2lnR/dr2 = -l/r^2 + (2Z/n)^2 * (L''*L - L'^2) / L^2
+// where L' = -L^{alpha+1}_{k-1}, L'' = L^{alpha+2}_{k-2}
+function d2RadialLnR(n, l, r, Z) {
+  if (n < 1 || l >= n || r <= 0) return 0;
+  const k = n - l - 1;        // degree of Laguerre polynomial
+  const alpha = 2 * l + 1;
+  const rho = 2 * Z * r / n;
+  const c = 2 * Z / n;        // drho/dr
+
+  const L = laguerreL(k, alpha, rho);
+  if (Math.abs(L) < 1e-15) return -l / (r * r);  // near a node of R
+
+  const Lp  = (k >= 1) ? -laguerreL(k - 1, alpha + 1, rho) : 0;  // dL/drho
+  const Lpp = (k >= 2) ?  laguerreL(k - 2, alpha + 2, rho) : 0;  // d2L/drho2
+
+  return -l / (r * r) + c * c * (Lpp * L - Lp * Lp) / (L * L);
+}
+
+// Force from radial correction (code convention: positive = inward)
+// V_rad = -(1/2) * d2RadialLnR(r)  (Hartree)
+// F_inward = dV/dr = -(1/2) * d/dr[d2RadialLnR]  (numerical derivative)
+function radialCorrectionForce(n, l, r, Z) {
+  if (n <= 1 && l === 0) return 0;  // (1,0,0) has no correction
+  const h = Math.max(r * 1e-4, 1e-6);
+  const dp = d2RadialLnR(n, l, r + h, Z);
+  const dm = d2RadialLnR(n, l, r - h, Z);
+  return -0.5 * (dp - dm) / (2 * h);
+}
+
+// Most-probable radius for state (n,l) - used for transition rescaling
+// Solves dV_eff/dr = 0 numerically (Newton's method on total radial force)
+function bohrRadius(n, l, Z) {
+  let r = n * n / Z;
+  for (let iter = 0; iter < 40; iter++) {
+    if (r < 0.1) r = 0.1;
+    const r2 = r * r, r3 = r2 * r;
+    // Total radial force: Coulomb + Kratzer + centrifugal + radial correction
+    const Fc = Z / r2;                      // Coulomb inward
+    const Fk = -1 / r3;                     // Kratzer outward
+    const Fcent = -l * (l + 1) / r3;        // centrifugal outward
+    const Frad = radialCorrectionForce(n, l, r, Z);
+    const F = Fc + Fk + Fcent + Frad;
+    // Numerical derivative of F for Newton step
+    const h = r * 1e-4;
+    const Fp = (() => { const rr=r+h, rr2=rr*rr, rr3=rr2*rr;
+      return Z/rr2 - 1/rr3 - l*(l+1)/rr3 + radialCorrectionForce(n,l,rr,Z); })();
+    const Fm = (() => { const rr=r-h, rr2=rr*rr, rr3=rr2*rr;
+      return Z/rr2 - 1/rr3 - l*(l+1)/rr3 + radialCorrectionForce(n,l,rr,Z); })();
+    const dF = (Fp - Fm) / (2 * h);
+    if (Math.abs(dF) < 1e-20) break;
+    const dr = -F / dF;
+    r += clamp(dr, -r * 0.5, r * 0.5);
+    if (Math.abs(F) < 1e-10) break;
+  }
+  return Math.max(r, 0.5);
+}
+
+// ─── θ/φ quantum terms ───────────────────────────────────────
+// d2_theta ln(Psi) depends only on l (and m), not on n.
+// Formulas from QHM Total-potential table (m = 0 only).
+function d2ThetaLnPsi(n, l, theta) {
+  if (l === 0) return 0;
+
+  const c  = Math.cos(theta);
+  const s  = Math.sin(theta);
+  const c2 = c * c,  s2 = s * s;
+  const c4 = c2*c2,  s4 = s2*s2;
+  const c6 = c4*c2,  s6 = s4*s2;
+  const EPS = 1e-12;
+
+  if (l === 1) {
+    // -1 / cos^2(theta)
+    return -1 / (c2 || EPS);
+  }
+  if (l === 2) {
+    // 6(sin^2 - 2) / (3cos^2 - 1)^2
+    const d = 3*c2 - 1;
+    return 6 * (s2 - 2) / (d*d || EPS);
+  }
+  if (l === 3) {
+    // 3(-25sin^6 + 70sin^4 - 65sin^2 - 25cos^6 + 17)
+    //   / ((5sin^2 - 2)^2 * cos^2)
+    const num = -25*s6 + 70*s4 - 65*s2 - 25*c6 + 17;
+    const d   = 5*s2 - 2;
+    const den = d*d * c2;
+    return 3 * num / (den || EPS);
+  }
+  if (l === 4) {
+    // 20(35sin^6 - 84sin^4 + 72sin^2 - 32)
+    //   / (35cos^4 - 30cos^2 + 3)^2
+    const num = 35*s6 - 84*s4 + 72*s2 - 32;
+    const d   = 35*c4 - 30*c2 + 3;
+    return 20 * num / (d*d || EPS);
+  }
+  if (l === 5) {
+    // 15(-350sin^6 + 980sin^4 - 910sin^2 - 147cos^8 - 182cos^6 + 265)
+    //   / ((63sin^4 - 56sin^2 + 8)^2 * cos^2)
+    const c8  = c4 * c4;
+    const num = -350*s6 + 980*s4 - 910*s2 - 147*c8 - 182*c6 + 265;
+    const d   = 63*s4 - 56*s2 + 8;
+    const den = d*d * c2;
+    return 15 * num / (den || EPS);
+  }
+
+  return 0;   // l > 5 not tabulated
+}
+function d2PhiLnPsi() { return 0; }   // correct for all m = 0 states
 
 // ─── Position input (pm → a.u.) ─────────────────────────────
 ["Xs","Ys","Zs"].forEach((key, idx) => {
@@ -752,17 +966,27 @@ function animation() {
       const sgn = pi.pos.x < pj.pos.x ? -1 : pi.pos.x > pj.pos.x ? +1 : 0;
       if (sgn !== 0) Frad = sgn * RAD_CONST_AU * (pi.charge*pj.charge)**2 * pi.vel.x / (r3 * pi.mass);
 
-      // θ/φ correction
+      // Radial quantum correction (always active for n > 1)
+      let Frad_q = 0;
+      if (pi.charge * pj.charge < 0 && (STATE.N > 1 || STATE.L > 0)) {
+        Frad_q = radialCorrectionForce(STATE.N, STATE.L, r, STATE.Z);
+      }
+
+      // θ/φ correction (with force clamping for stability)
       let Ftp = 0;
-      if (STATE.isThetaPhi) {
+      if (STATE.isThetaPhi && pi.charge * pj.charge < 0) {
         const [, th] = cartInPolar(dx, dy, dz);
         const s2 = Math.sin(th)**2 || 1e-9;
-        Ftp = 2 * (d2ThetaLnPsi(STATE.N, STATE.L, th) + d2PhiLnPsi() / s2) / (r3 || 1e-18);
+        const raw = d2ThetaLnPsi(STATE.N, STATE.L, th) + d2PhiLnPsi() / s2;
+        // Clamp angular term to prevent divergence at wavefunction nodes
+        const maxAng = 50;
+        const clamped = Math.max(-maxAng, Math.min(maxAng, raw));
+        Ftp = 2 * clamped / (r3 || 1e-18);
       }
 
       // Radial acceleration (ACCUMULATED over all pairs)
       _v.dir.copy(_v.dv).divideScalar(r);
-      pi.acc.addScaledVector(_v.dir, (Fel + Fk + Frad + Ftp) / pi.mass);
+      pi.acc.addScaledVector(_v.dir, (Fel + Fk + Frad + Frad_q + Ftp) / pi.mass);
 
       // Spin term (perpendicular)
       if (Lterm) {
@@ -785,6 +1009,14 @@ function animation() {
     if (STATE.isLarmor && pi.type === "electron") pi.vel.multiplyScalar(Math.exp(-1e-3 * dt));
     pi.vel.addScaledVector(pi.acc, dt);
     pi.pos.addScaledVector(pi.vel, dt * STATE.radiation);
+    // NaN recovery: reset to safe position if numerical blowup
+    if (!Number.isFinite(pi.pos.x + pi.pos.y + pi.pos.z)) {
+      console.warn("NaN detected, resetting particle", i);
+      const safeR = bohrRadius(STATE.N, STATE.L, STATE.Z);
+      pi.pos.set(-safeR, 0, 0);
+      pi.vel.set(0, 0, 0);
+      pi.acc.set(0, 0, 0);
+    }
   }
 }
 
@@ -806,11 +1038,16 @@ function animation() {
 
 let _lastFrameTime = 0;
 let _physicsAccumulator = 0;
+let _fpsLastTime = 0;
+let _fpsFrameCount = 0;
 
 function changeInterval(newDt) {
   const v = Number(newDt);
   if (!Number.isFinite(v) || v <= 0) return;
   STATE.dtMs = v;
+
+  // Update Panel dt display
+  if (UI.dtPanelRead) UI.dtPanelRead.textContent = v + ' ms';
 }
 
 // ─── Trajectory: InstancedMesh ───────────────────────────────
@@ -880,6 +1117,23 @@ function deletePath() {
 function mainLoop(timestamp) {
   if (typeof frames === "number") frames++;
 
+  // FPS calculation (every second)
+  _fpsFrameCount++;
+  if (_fpsLastTime === 0) _fpsLastTime = timestamp;
+  const fpsElapsed = timestamp - _fpsLastTime;
+
+  if (fpsElapsed >= 1000) {
+    const fps = Math.round((_fpsFrameCount * 1000) / fpsElapsed);
+    const fpsEl = document.getElementById('fpsRead');
+    if (fpsEl) fpsEl.textContent = String(fps);
+
+    // Update Panel FPS
+    if (UI.fpsPanelRead) UI.fpsPanelRead.textContent = String(fps);
+
+    _fpsFrameCount = 0;
+    _fpsLastTime = timestamp;
+  }
+
   // Compute elapsed time since last frame
   if (_lastFrameTime === 0) _lastFrameTime = timestamp;
   const elapsed = Math.min(timestamp - _lastFrameTime, 200); // cap at 200ms to avoid spiral of death
@@ -902,6 +1156,7 @@ function mainLoop(timestamp) {
     // Force & energy readout (throttled by frame count)
     if (typeof frames === "number" && frames % 3 === 0) {
       updateDistanceAndEnergy();
+      updateSelectedParticleDisplay();
       for (const pi of STATE.particles) {
         if (pi.type !== "electron") continue;
         UI.fx.textContent = (pi.acc.x * pi.mass).toExponential(2) + " Eₕ/a₀";
@@ -924,6 +1179,9 @@ function mainLoop(timestamp) {
   requestAnimationFrame(mainLoop);
 }
 requestAnimationFrame(mainLoop);
+
+// Initialize Panel dt display
+if (UI.dtPanelRead) UI.dtPanelRead.textContent = STATE.dtMs.toFixed(0) + ' ms';
 
 // ─── Public API ──────────────────────────────────────────────
 const intoRealWorld = mainLoop;  // backward compat alias
