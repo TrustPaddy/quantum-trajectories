@@ -102,6 +102,12 @@
     .btn.toggle[aria-pressed="true"],.btn.toggle.active{
       border-color:rgba(125,211,252,.7);box-shadow:var(--shadow)
     }
+    #btnQHJ.active,#btnQHJ[aria-pressed="true"]{
+      border-color:rgba(168,85,247,.8);
+      background:linear-gradient(135deg,rgba(168,85,247,.12),rgba(168,85,247,.22));
+      color:#c084fc;
+      box-shadow:0 0 16px rgba(168,85,247,.25);
+    }
     .btn.recording{
       background:linear-gradient(135deg,rgba(34,197,94,.15),rgba(34,197,94,.25));
       border-color:rgba(34,197,94,.4);
@@ -252,6 +258,7 @@
         <button id="btnThetaPhi" class="btn toggle" aria-pressed="false" title="θ/φ Quantum Terms">θ/φ</button>
         <button id="btnLock"     class="btn toggle" aria-pressed="false" title="Nucleus Lock">Lock</button>
         <button id="btnRelax"    class="btn toggle" aria-pressed="false" title="Automatic Relaxation">Relax</button>
+        <button id="btnQHJ"      class="btn toggle" aria-pressed="false" title="Yang QHJ Dynamics (full quantum potential)" style="border-color:rgba(168,85,247,.4)">QHJ</button>
       </div>
 
       <div class="spacer"></div>
@@ -300,6 +307,7 @@
               <li><strong>θ/φ:</strong> Adds quantum angular correction terms from wavefunction</li>
               <li><strong>Lock:</strong> Freezes nucleus in place (protons don't move)</li>
               <li><strong>Relax:</strong> Automatic energy level transitions (electrons decay to lower states)</li>
+              <li><strong>QHJ:</strong> Yang's Quantum Hamilton–Jacobi dynamics — replaces individual force terms with the full quantum potential V̄(ρ,θ) including shell barriers, universal quantum term, and angular confinement. Ang.Mom. and θ/φ buttons become automatic.</li>
             </ul>
 
             <h4>Quantum Numbers</h4>
@@ -445,6 +453,7 @@
           <div class="chip">Lock: <strong id="lockRead">off</strong></div>
           <div class="chip">θ/φ: <strong id="thetaPhiRead">off</strong></div>
           <div class="chip">Relax: <strong id="relaxRead">off</strong></div>
+          <div class="chip">Mode: <strong id="modeRead">Classic</strong></div>
         </div>
       </main>
     </div>
@@ -452,6 +461,7 @@
 
   <!-- ═══ App scripts ═══ -->
   <script src="./fps.js"></script>
+  <script src="./yang-qhj.js"></script>
   <script src="./dynamics.js"></script>
 
   <!-- ═══ UI Wiring ═══ -->
@@ -495,7 +505,7 @@
         'incrementM','decrementM',
         'changeAnsatz','toggleLamor','toggleThetaPhi',
         'lockNucleus','changeCountElectron','changeCountProton',
-        'toggleRelaxation',
+        'toggleRelaxation','toggleQHJ',
       ];
       API.forEach(name => {
         if (typeof window[name] !== 'function')
@@ -563,6 +573,19 @@
       bindToggle('btnRelax', next => {
         window.toggleRelaxation(next);
         document.getElementById('relaxRead').textContent = next ? 'on' : 'off';
+      });
+      bindToggle('btnQHJ', next => {
+        const mode = window.toggleQHJ(next);
+        const isQHJ = mode === 'qhj';
+        document.getElementById('modeRead').textContent = isQHJ ? 'QHJ' : 'Classic';
+        // Visual feedback: dim the buttons that are superseded by QHJ
+        ['btnAnsatz','btnThetaPhi'].forEach(id => {
+          const b = document.getElementById(id);
+          if (b) b.style.opacity = isQHJ ? '0.4' : '1';
+        });
+        if (isQHJ && typeof window.showToast === 'function') {
+          window.showToast('Yang QHJ mode: full quantum potential active (Ang.Mom. & θ/φ are now automatic)', 'info');
+        }
       });
 
       // ── Δt slider ──

@@ -107,6 +107,7 @@ const UI = {
   fy: document.getElementById("fy"),
   fz: document.getElementById("fz"),
   relaxRead: document.getElementById("relaxRead"),
+  modeRead: document.getElementById("modeRead"),
   // Selected particle display
   selectedX: document.getElementById("selectedX"),
   selectedY: document.getElementById("selectedY"),
@@ -150,6 +151,7 @@ const STATE = {
   isLarmor: false, 
   isThetaPhi: false, 
   isRelaxation: false,
+  dynamicsMode: 'classic',  // 'classic' or 'qhj'
   _relaxTimer: 0,
   dt: 0.08,               // a.u. time step
   dtMs: 1000 / 30,        // display interval
@@ -674,20 +676,67 @@ function tryTransition(nN, nL, nM) {
   if (STATE.atomLabel === AtomModel.HAtom && STATE.particles[1]) {
     const e = STATE.particles[1];
     const nuc = STATE.particles[0];
-    const newR = bohrRadius(nN, nL, STATE.Z);
-    // Scale position to new equilibrium radius
-    const dir = e.pos.clone().sub(nuc.pos);
-    const dirLen = dir.length() || 1e-9;
-    dir.divideScalar(dirLen);
-    e.pos.copy(nuc.pos).addScaledVector(dir, newR);
-    // Set circular-orbit velocity for l > 0
+
+    // Choose radius based on dynamics mode
+    const newR = (STATE.dynamicsMode === 'qhj' && window.yangEquilibriumRadius)
+      ? window.yangEquilibriumRadius(nN, nL, nM, STATE.Z)
+      : bohrRadius(nN, nL, STATE.Z);
+
+    // Set velocity depending on mode
     e.vel.set(0, 0, 0);
-    if (nL > 0 && !STATE.isThetaPhi) {
-      // v_circ = sqrt(l(l+1)) / r  gives centripetal = l(l+1)/r^3
-      const vCirc = Math.sqrt(nL * (nL + 1)) / newR;
-      const perp = new THREE.Vector3(-dir.y, dir.x, 0);
-      const pLen = perp.length();
-      if (pLen > 1e-9) { perp.divideScalar(pLen); e.vel.addScaledVector(perp, vCirc); }
+    if (STATE.dynamicsMode === 'qhj') {
+      // QHJ mode: place electron at correct (ρ_eq, θ_eq) in spherical coords
+      const thetaEq = window.yangEquilibriumTheta
+        ? window.yangEquilibriumTheta(nL, nM)
+        : Math.PI / 2;
+
+      // Preserve φ from current position
+      const oldDir = e.pos.clone().sub(nuc.pos);
+      const phi = Math.atan2(oldDir.y, oldDir.x);
+
+      const sinTh = Math.sin(thetaEq);
+      const cosTh = Math.cos(thetaEq);
+
+      e.pos.set(
+        nuc.pos.x + newR * sinTh * Math.cos(phi),
+        nuc.pos.y + newR * sinTh * Math.sin(phi),
+        nuc.pos.z + newR * cosTh
+      );
+
+      if (nM !== 0) {
+        // v_φ = |m| / (ρ sinθ) from Yang Eq. (43c)
+        const vCirc = Math.abs(nM) / (newR * sinTh);
+        // φ-hat = (−sinφ, cosφ, 0)
+        e.vel.set(
+          -Math.sign(nM) * vCirc * Math.sin(phi),
+           Math.sign(nM) * vCirc * Math.cos(phi),
+          0
+        );
+      } else if (nL > 0) {
+        // m=0: electron is stationary at equilibrium (Yang Eq. 43c: dφ/dτ=0).
+        // Add small radial kick so oscillation around equilibrium is visible.
+        // Scale kick inversely with n to avoid overshooting for higher shells.
+        const radHat = new THREE.Vector3(
+          sinTh * Math.cos(phi),
+          sinTh * Math.sin(phi),
+          cosTh
+        );
+        const kickFraction = 0.08 / nN;
+        e.pos.addScaledVector(radHat, kickFraction * newR);
+      }
+    } else {
+      // Classic mode: scale position along existing direction
+      const dir = e.pos.clone().sub(nuc.pos);
+      const dirLen = dir.length() || 1e-9;
+      dir.divideScalar(dirLen);
+      e.pos.copy(nuc.pos).addScaledVector(dir, newR);
+
+      if (nL > 0 && !STATE.isThetaPhi) {
+        const vCirc = Math.sqrt(nL * (nL + 1)) / newR;
+        const perp = new THREE.Vector3(-dir.y, dir.x, 0);
+        const pLen = perp.length();
+        if (pLen > 1e-9) { perp.divideScalar(pLen); e.vel.addScaledVector(perp, vCirc); }
+      }
     }
     e.acc.set(0, 0, 0);
   }
@@ -728,6 +777,54 @@ function tickRelaxation() {
   if (STATE._relaxTimer >= Math.round(RELAX_BASE_TICKS / (STATE.N * STATE.N))) {
     if (!tryTransition(STATE.N-1, STATE.L-1, STATE.M) && STATE.L===0) 
       STATE._relaxTimer = 0;
+  }
+}
+
+// ─── QHJ Mode Toggle ───────────────────────────────────────────
+function toggleQHJ(on) {
+  STATE.dynamicsMode = (on !== undefined ? !!on : STATE.dynamicsMode !== 'qhj')
+    ? 'qhj' : 'classic';
+  return STATE.dynamicsMode;
+}
+
+// ─── QHJ Force Gathering (Yang 2005, Eq. 40–41) ───────────────
+// Electron–proton pairs use the full QHJ total potential.
+// All other pairs use classical Coulomb.
+function gatherForcesQHJ() {
+  const pArr = STATE.particles;
+
+  for (let i = 0; i < pArr.length; i++) {
+    const pi = pArr[i];
+    pi.acc.set(0, 0, 0);
+    if (STATE.isNucleusLocked && pi.type === "proton") continue;
+
+    for (let j = 0; j < pArr.length; j++) {
+      if (i === j) continue;
+      const pj = pArr[j];
+
+      _v.dv.copy(pj.pos).sub(pi.pos);
+      const dx = _v.dv.x, dy = _v.dv.y, dz = _v.dv.z;
+      const r2 = dx * dx + dy * dy + dz * dz + SOFTENING * SOFTENING;
+      const r  = Math.sqrt(r2);
+
+      if (pi.type === "electron" && pj.type === "proton" && window.yangForceCartesian) {
+        // ── QHJ: electron in proton's quantum potential ──
+        const rx = pi.pos.x - pj.pos.x;
+        const ry = pi.pos.y - pj.pos.y;
+        const rz = pi.pos.z - pj.pos.z;
+        const Z = Math.abs(pj.charge);
+        const f = window.yangForceCartesian(rx, ry, rz, STATE.N, STATE.L, STATE.M, Z);
+        pi.acc.x += f.fx;   // m_e = 1 in a.u.
+        pi.acc.y += f.fy;
+        pi.acc.z += f.fz;
+      } else {
+        // ── Classical Coulomb for proton–electron (on proton),
+        //    electron–electron, and proton–proton pairs ──
+        const Fel = (-pi.charge * pj.charge) / r2;
+        _v.dir.copy(_v.dv).divideScalar(r);
+        pi.acc.addScaledVector(_v.dir, Fel / pi.mass);
+      }
+    }
   }
 }
 
@@ -933,67 +1030,72 @@ function animation() {
   tickRelaxation();
 
   const pArr = STATE.particles, dt = STATE.dt;
-  const Lterm = STATE.isAngularMomentum ? 0 : STATE.L * (STATE.L + 1);
 
-  // ── Phase 1: Gather forces ──
-  for (let i = 0; i < pArr.length; i++) {
-    const pi = pArr[i];
-    pi.acc.set(0, 0, 0);
-    if (STATE.isNucleusLocked && pi.type === "proton") continue;
+  // ── Phase 1: Gather forces (mode-dependent) ──
+  if (STATE.dynamicsMode === 'qhj') {
+    gatherForcesQHJ();
+  } else {
+    // ── Classic force gathering ──
+    const Lterm = STATE.isAngularMomentum ? 0 : STATE.L * (STATE.L + 1);
 
-    for (let j = 0; j < pArr.length; j++) {
-      if (i === j) continue;
-      const pj = pArr[j];
+    for (let i = 0; i < pArr.length; i++) {
+      const pi = pArr[i];
+      pi.acc.set(0, 0, 0);
+      if (STATE.isNucleusLocked && pi.type === "proton") continue;
 
-      _v.dv.copy(pj.pos).sub(pi.pos);
-      const dx = _v.dv.x, dy = _v.dv.y, dz = _v.dv.z;
-      const r2 = dx*dx + dy*dy + dz*dz + SOFTENING*SOFTENING;
-      const r  = Math.sqrt(r2);
-      const r3 = r2 * r;
+      for (let j = 0; j < pArr.length; j++) {
+        if (i === j) continue;
+        const pj = pArr[j];
 
-      // Coulomb
-      const Fel = (-STATE.Z * pi.charge * pj.charge) / r2;
+        _v.dv.copy(pj.pos).sub(pi.pos);
+        const dx = _v.dv.x, dy = _v.dv.y, dz = _v.dv.z;
+        const r2 = dx*dx + dy*dy + dz*dz + SOFTENING*SOFTENING;
+        const r  = Math.sqrt(r2);
+        const r3 = r2 * r;
 
-      // Kratzer + spin (opposite charges only)
-      let Fk = 0, Fspin = 0;
-      if (pi.charge * pj.charge < 0) {
-        Fk = (pi.charge * pj.charge) / r3;
-        if (Lterm) Fspin = (pi.charge * pj.charge * Lterm) / r3;
-      }
+        // Coulomb
+        const Fel = (-STATE.Z * pi.charge * pj.charge) / r2;
 
-      // Radiation reaction
-      let Frad = 0;
-      const sgn = pi.pos.x < pj.pos.x ? -1 : pi.pos.x > pj.pos.x ? +1 : 0;
-      if (sgn !== 0) Frad = sgn * RAD_CONST_AU * (pi.charge*pj.charge)**2 * pi.vel.x / (r3 * pi.mass);
+        // Kratzer + spin (opposite charges only)
+        let Fk = 0, Fspin = 0;
+        if (pi.charge * pj.charge < 0) {
+          Fk = (pi.charge * pj.charge) / r3;
+          if (Lterm) Fspin = (pi.charge * pj.charge * Lterm) / r3;
+        }
 
-      // Radial quantum correction (always active for n > 1)
-      let Frad_q = 0;
-      if (pi.charge * pj.charge < 0 && (STATE.N > 1 || STATE.L > 0)) {
-        Frad_q = radialCorrectionForce(STATE.N, STATE.L, r, STATE.Z);
-      }
+        // Radiation reaction
+        let Frad = 0;
+        const sgn = pi.pos.x < pj.pos.x ? -1 : pi.pos.x > pj.pos.x ? +1 : 0;
+        if (sgn !== 0) Frad = sgn * RAD_CONST_AU * (pi.charge*pj.charge)**2 * pi.vel.x / (r3 * pi.mass);
 
-      // θ/φ correction (with force clamping for stability)
-      let Ftp = 0;
-      if (STATE.isThetaPhi && pi.charge * pj.charge < 0) {
-        const [, th] = cartInPolar(dx, dy, dz);
-        const s2 = Math.sin(th)**2 || 1e-9;
-        const raw = d2ThetaLnPsi(STATE.N, STATE.L, th) + d2PhiLnPsi() / s2;
-        // Clamp angular term to prevent divergence at wavefunction nodes
-        const maxAng = 50;
-        const clamped = Math.max(-maxAng, Math.min(maxAng, raw));
-        Ftp = 2 * clamped / (r3 || 1e-18);
-      }
+        // Radial quantum correction (always active for n > 1)
+        let Frad_q = 0;
+        if (pi.charge * pj.charge < 0 && (STATE.N > 1 || STATE.L > 0)) {
+          Frad_q = radialCorrectionForce(STATE.N, STATE.L, r, STATE.Z);
+        }
 
-      // Radial acceleration (ACCUMULATED over all pairs)
-      _v.dir.copy(_v.dv).divideScalar(r);
-      pi.acc.addScaledVector(_v.dir, (Fel + Fk + Frad + Frad_q + Ftp) / pi.mass);
+        // θ/φ correction (with force clamping for stability)
+        let Ftp = 0;
+        if (STATE.isThetaPhi && pi.charge * pj.charge < 0) {
+          const [, th] = cartInPolar(dx, dy, dz);
+          const s2 = Math.sin(th)**2 || 1e-9;
+          const raw = d2ThetaLnPsi(STATE.N, STATE.L, th) + d2PhiLnPsi() / s2;
+          const maxAng = 50;
+          const clamped = Math.max(-maxAng, Math.min(maxAng, raw));
+          Ftp = 2 * clamped / (r3 || 1e-18);
+        }
 
-      // Spin term (perpendicular)
-      if (Lterm) {
-        _v.perp.set(-dy, dx, 0);
-        const pLen = _v.perp.length();
-        if (pLen > 1e-12) { 
-          _v.perp.divideScalar(pLen); pi.acc.addScaledVector(_v.perp, Fspin / pi.mass); 
+        // Radial acceleration (ACCUMULATED over all pairs)
+        _v.dir.copy(_v.dv).divideScalar(r);
+        pi.acc.addScaledVector(_v.dir, (Fel + Fk + Frad + Frad_q + Ftp) / pi.mass);
+
+        // Spin term (perpendicular)
+        if (Lterm) {
+          _v.perp.set(-dy, dx, 0);
+          const pLen = _v.perp.length();
+          if (pLen > 1e-12) { 
+            _v.perp.divideScalar(pLen); pi.acc.addScaledVector(_v.perp, Fspin / pi.mass); 
+          }
         }
       }
     }
@@ -1213,5 +1315,6 @@ window.decrementAngularMomentum = decrementAngularMomentum;
 window.changeAnsatz = changeAnsatz;
 window.tryTransition = tryTransition;
 window.toggleRelaxation = toggleRelaxation;
+window.toggleQHJ = toggleQHJ;
 window.incrementM = incrementM;
-window.decrementM = decrementM;
+window.decrementM = decrementM;w
