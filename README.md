@@ -1,4 +1,6 @@
-# Particle Simulation Physics
+## 🔗 [Live Demo](https://trustpaddy.github.io/quantum-trajectories/particles.html)
+
+# Quantum Trajectories - QHJ Simulation
 
 **An interactive 3D simulator for hydrogen-like atoms — visualizing quantum trajectories using Yang's Quantum Hamilton-Jacobi theory.**
 
