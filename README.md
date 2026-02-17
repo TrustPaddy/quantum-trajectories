@@ -2,6 +2,10 @@
 
 # Quantum Trajectories - QHJ Simulation
 
+[![Based on: Yang 2006](https://img.shields.io/badge/Based%20on-Yang%202006-blue)](https://doi.org/10.1002/qua.20878)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Built with A-Frame](https://img.shields.io/badge/Built%20with-A--Frame-ef2d5e)](https://aframe.io)
+
 **An interactive 3D simulator for hydrogen-like atoms — visualizing quantum trajectories using Yang's Quantum Hamilton-Jacobi theory.**
 
 <!-- Replace with an actual screenshot of your simulation -->
@@ -198,4 +202,4 @@ No frameworks. No build tools. No package manager. Pure browser-side code.
 
 ## License
 
-This project is part of academic work at Frankfurt University of Applied Sciences. License terms to be determined.
+This project is licensed under the [MIT License](LICENSE).
