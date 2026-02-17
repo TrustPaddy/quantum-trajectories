@@ -3,9 +3,9 @@
 **An interactive 3D simulator for hydrogen-like atoms — visualizing quantum trajectories using Yang's Quantum Hamilton-Jacobi theory.**
 
 <!-- Replace with an actual screenshot of your simulation -->
-![Simulation Screenshot](screenshot.png)
+![Simulation Screenshot](particles_web_app.png)
 
-*Screenshot: Electron trajectory around a hydrogen nucleus in QHJ mode, showing the shell structure emerging from the quantum potential.*
+*Screenshot: Hydrogen atom in ground-state equilibrium.*
 
 ---
 
