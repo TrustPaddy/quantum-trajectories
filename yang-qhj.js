@@ -7,13 +7,16 @@
 //   by Quantum Hamilton–Jacobi Theory"
 //  Int. J. Quantum Chem. 106, 1620–1639
 //
-//  Implements the total potential V̄(ρ,θ) from Eq. (40):
+//  Implements the total potential V̄(ρ,θ) from equations.tex §4:
 //
 //    V̄ = −2Z/ρ  +  (4 + cot²θ)/(4ρ²)
 //         − d²ln R_{nl}/dρ²  − (1/ρ²) d²ln Θ_{lm}/dθ²
 //
-//  Forces are obtained by numerical gradient of V̄ in Cartesian
-//  coordinates and converted to atomic units (Hartree/a₀).
+//  Forces use the ANALYTICAL formulas from equations.tex §5:
+//
+//    f̄^r = −2/ρ²+(4+cot²θ)/(2ρ³)+d³lnR/dρ³ −(2/ρ³)d²lnΘ/dθ²
+//    f̄^θ = (1/ρ²)d³lnΘ/dθ³ + cosθ/(2ρ²sin³θ)
+//    f̄^φ = 0
 //
 //  All internal coordinates are in atomic units (a₀, Hartree).
 // ═══════════════════════════════════════════════════════════════
@@ -100,8 +103,10 @@ function d2lnTheta_yang(l, m, theta) {
   const ct = Math.cos(theta);
   const st = Math.sin(theta);
 
-  // Near poles: cot²θ → ∞, return large barrier
-  if (Math.abs(st) < 1e-8) return -1e6;
+  // Near poles: for m≠0 the Legendre polynomial vanishes → genuine singularity.
+  // For m=0 the function is finite at the poles (u→0, d²lnΘ/dθ² → finite),
+  // so we let the computation proceed normally.
+  if (Math.abs(st) < 1e-8 && absm > 0) return -1e6;
 
   const P = assocLegendreP(l, absm, ct);
 
@@ -111,12 +116,13 @@ function d2lnTheta_yang(l, m, theta) {
   const angScale = Math.max(Math.abs(Pm1), 1);
   if (Math.abs(P) < 1e-12 * angScale) return -1e6;
 
-  // u = (dΘ/dθ) / Θ = l·cotθ − (l+|m|)·P_{l-1}^{|m|} / (sinθ · P_l^{|m|})
+  // u = dlnΘ/dθ = (l·cosθ·P - (l+|m|)·P_{l-1}) / (sinθ·P)
+  // Written in factored form to avoid catastrophic cancellation near sinθ→0 for m=0.
   let u;
   if (l - 1 >= absm) {
-    u = l * ct / st - (l + absm) * Pm1 / (st * P);
+    u = (l * ct * P - (l + absm) * Pm1) / (st * P);
   } else {
-    // P_{l-1}^{|m|} = 0 when l-1 < |m|
+    // P_{l-1}^{|m|} = 0 when l-1 < |m|  (e.g. l=|m|, so l-1 < |m|)
     u = l * ct / st;
   }
 
@@ -125,6 +131,72 @@ function d2lnTheta_yang(l, m, theta) {
   u = Math.max(-U_CAP, Math.min(U_CAP, u));
 
   return -ct / st * u - l * (l + 1) + absm * absm / (st * st) - u * u;
+}
+
+// ─── d³ln R_{nl}(ρ) / dρ³  (analytical) ─────────────────────
+// Used in the analytical radial force f̄^r (equations.tex §5).
+// d³lnR/dρ³ = 2l/ρ³ + c³ · (L'''/L − 3(L'/L)(L''/L) + 2(L'/L)³)
+// where c = 2Z/n, L''' = −L_{k-3}^{α+3}  for k≥3, else 0
+function d3lnR_yang(n, l, rho, Z) {
+  if (n < 1 || l >= n || rho <= 1e-10) return 0;
+  const k = n - l - 1;
+  const alpha = 2 * l + 1;
+  const x = 2 * Z * rho / n;
+  const c = 2 * Z / n;
+
+  const L    = laguerreQHJ(k, alpha, x);
+  const Lp   = (k >= 1) ? -laguerreQHJ(k - 1, alpha + 1, x) : 0;
+  const Lpp  = (k >= 2) ?  laguerreQHJ(k - 2, alpha + 2, x) : 0;
+  const Lppp = (k >= 3) ? -laguerreQHJ(k - 3, alpha + 3, x) : 0;
+
+  const scale = Math.max(Math.abs(Lp), Math.abs(Lpp), 1);
+  if (Math.abs(L) < 1e-12 * scale) return 0;  // at node: force singular, return 0 (capped separately)
+
+  const fL  = Lp / L;
+  const gL  = Lpp / L;
+  const hL  = Lppp / L;
+  // d³lnL/dx³ = L'''/L − 3(L'/L)(L''/L) + 2(L'/L)³
+  const fppp = hL - 3 * fL * gL + 2 * fL * fL * fL;
+
+  const res = 2 * l / (rho * rho * rho) + c * c * c * fppp;
+  return Number.isFinite(res) ? res : 0;
+}
+
+// ─── d³ln Θ_{lm}(θ) / dθ³  (analytical) ────────────────────
+// equations.tex §5: f̄^θ involves d³lnΘ/dθ³.
+// d³lnΘ/dθ³ = u/sin²θ + 2m²cosθ/sin³θ − (cotθ + 2u)·d²lnΘ/dθ²
+// where u = dlnΘ/dθ  (same u computed in d2lnTheta_yang).
+function d3lnTheta_yang(l, m, theta) {
+  if (l === 0) return 0;
+  const absm = Math.abs(m);
+  const ct   = Math.cos(theta);
+  const st   = Math.sin(theta);
+
+  if (Math.abs(st) < 1e-8 && absm > 0) return 1e6;  // singular at poles for m≠0
+  if (Math.abs(st) < 1e-8 && absm === 0) return 0;  // finite limit for m=0
+
+  const P = assocLegendreP(l, absm, ct);
+  let Pm1 = 0;
+  if (l - 1 >= absm) Pm1 = assocLegendreP(l - 1, absm, ct);
+  const angScale = Math.max(Math.abs(Pm1), 1);
+  if (Math.abs(P) < 1e-12 * angScale) return 1e6;  // near angular node: large repulsion
+
+  // u = dlnΘ/dθ  (stable factored form)
+  let u = (l - 1 >= absm)
+    ? (l * ct * P - (l + absm) * Pm1) / (st * P)
+    : l * ct / st;
+  const U_CAP = 1e4;
+  u = Math.max(-U_CAP, Math.min(U_CAP, u));
+
+  // f'' = d²lnΘ/dθ²
+  const fpp = -ct / st * u - l * (l + 1) + absm * absm / (st * st) - u * u;
+
+  // f''' = u/sin²θ + 2m²cosθ/sin³θ − (cotθ + 2u)·f''
+  const res = u / (st * st)
+    + 2 * absm * absm * ct / (st * st * st)
+    - (ct / st + 2 * u) * fpp;
+
+  return Number.isFinite(res) ? Math.max(-1e6, Math.min(1e6, res)) : 0;
 }
 
 // ─── Yang's total potential V̄(ρ,θ)  [dimensionless, Eq. 40] ─
@@ -169,44 +241,120 @@ function yangPotentialXYZ(x, y, z, n, l, m, Z) {
 
 // ─── Force on electron in Cartesian coords [Hartree/a₀] ─────
 // (x,y,z) = electron position relative to nucleus, in a₀.
-// Force = −∇V computed by central finite differences.
+//
+// Uses the ANALYTICAL force formulas from equations.tex §5 (Yang 2005):
+//
+//   f̄^r = −2/ρ² + (4+cot²θ)/(2ρ³) + d³lnR/dρ³ − (2/ρ³)·d²lnΘ/dθ²
+//   f̄^θ = (1/ρ²)·d³lnΘ/dθ³ + cosθ/(2ρ²sin³θ)
+//   f̄^φ = 0   (no azimuthal force, conserved Lz)
+//
+// Physical forces [Hartree/a₀]:
+//   F_r = 0.5 · f̄^r
+//   F_θ = 0.5 · f̄^θ / ρ   (metric factor from -∂V/∂θ → force)
+//
+// Converted to Cartesian via:
+//   F⃗ = F_r · r̂ + (F_θ/sinθ) · θ̂_proj
+// where θ̂_proj = (xz, yz, -rxy²) / (r · rxy)  and  F_θ includes 1/r.
+//
+// Falls back to numerical gradient when near the z-axis (rxy < 1e-8·r)
+// to avoid the coordinate singularity of spherical coordinates.
+
 const YANG_FORCE_CAP_BASE = 200;   // base max force magnitude (Hartree/a₀)
 
 function yangForceCartesian(x, y, z, n, l, m, Z) {
-  // Scale force cap with n² — higher shells need stronger barrier forces
   const forceCap = YANG_FORCE_CAP_BASE * Math.max(1, n * n);
 
-  const r = Math.sqrt(x * x + y * y + z * z);
-  let h = Math.max(r * 1e-4, 1e-6);
+  const r2  = x * x + y * y + z * z;
+  const r   = Math.sqrt(r2);
+  if (r < 1e-10) return { fx: 0, fy: 0, fz: 0 };
 
-  // First pass: compute gradient with initial h
-  let Vxp = yangPotentialXYZ(x + h, y, z, n, l, m, Z);
-  let Vxm = yangPotentialXYZ(x - h, y, z, n, l, m, Z);
-  let Vyp = yangPotentialXYZ(x, y + h, z, n, l, m, Z);
-  let Vym = yangPotentialXYZ(x, y - h, z, n, l, m, Z);
-  let Vzp = yangPotentialXYZ(x, y, z + h, n, l, m, Z);
-  let Vzm = yangPotentialXYZ(x, y, z - h, n, l, m, Z);
+  const rho  = r;  // in atomic units, ρ = r/a₀ = r
+  const rho2 = rho * rho;
+  const rho3 = rho2 * rho;
 
-  // If potential variation across h is huge, refine with smaller step
-  const maxDV = Math.max(Math.abs(Vxp - Vxm), Math.abs(Vyp - Vym), Math.abs(Vzp - Vzm));
-  if (maxDV > 10) {
-    h *= 0.01;
-    Vxp = yangPotentialXYZ(x + h, y, z, n, l, m, Z);
-    Vxm = yangPotentialXYZ(x - h, y, z, n, l, m, Z);
-    Vyp = yangPotentialXYZ(x, y + h, z, n, l, m, Z);
-    Vym = yangPotentialXYZ(x, y - h, z, n, l, m, Z);
-    Vzp = yangPotentialXYZ(x, y, z + h, n, l, m, Z);
-    Vzm = yangPotentialXYZ(x, y, z - h, n, l, m, Z);
+  const cosTheta = Math.max(-1, Math.min(1, z / r));
+  const theta    = Math.acos(cosTheta);
+  const sinTheta = Math.sin(theta);
+
+  // rxy = projected radius in xy-plane
+  const rxy = Math.sqrt(x * x + y * y);
+
+  // ── Analytical forces in spherical coordinates ──────────────
+  //
+  // Check for z-axis proximity: fall back to numerical gradient
+  // to avoid the 1/sinθ coordinate singularity.
+  const USE_NUMERICAL = rxy < 1e-8 * r;
+
+  let fx, fy, fz;
+
+  if (!USE_NUMERICAL) {
+    const cotTh  = cosTheta / sinTheta;
+    const cot2   = cotTh * cotTh;
+
+    // d³ of lnR and d² and d³ of lnΘ (d²lnR is only needed for the potential, not the force)
+    const d3R    = d3lnR_yang(n, l, rho, Z);
+    const d2Th   = d2lnTheta_yang(l, m, theta);
+    const d3Th   = d3lnTheta_yang(l, m, theta);
+
+    // f̄^r = −2/ρ² + (4+cot²θ)/(2ρ³) + d³lnR/dρ³ − (2/ρ³)·d²lnΘ/dθ²
+    const fbar_r = -2 / rho2
+      + (4 + cot2) / (2 * rho3)
+      + d3R
+      - 2 * d2Th / rho3;
+
+    // f̄^θ = (1/ρ²)·d³lnΘ/dθ³ + cosθ/(2ρ²·sin³θ)
+    const fbar_th = d3Th / rho2
+      + cosTheta / (2 * rho2 * sinTheta * sinTheta * sinTheta);
+
+    // Physical forces [Hartree/a₀]:  F_r = 0.5·f̄^r
+    //   F_θ_eff = 0.5·f̄^θ / r   (the r factor comes from converting
+    //             the generalised θ-force to Cartesian: F_x += F_θ·∂θ/∂x)
+    const Fr      = 0.5 * fbar_r;
+    const Fth_eff = 0.5 * fbar_th / r;   // [Hartree/a₀²] times the geometric factors below
+
+    // Conversion sph → Cartesian:
+    //   r̂ components: (x/r, y/r, z/r)
+    //   (∂θ/∂x, ∂θ/∂y, ∂θ/∂z) = (xz, yz, −rxy²) / (r² · rxy)
+    const geom = 1.0 / (r2 * rxy);   // 1/(r²·rxy)
+    fx = Fr * (x / r) + Fth_eff * (x * z) * geom;
+    fy = Fr * (y / r) + Fth_eff * (y * z) * geom;
+    fz = Fr * (z / r) - Fth_eff * (rxy * rxy) * geom;
+
+    // NaN guard
+    if (!Number.isFinite(fx)) fx = 0;
+    if (!Number.isFinite(fy)) fy = 0;
+    if (!Number.isFinite(fz)) fz = 0;
+
+  } else {
+    // ── Numerical gradient fallback (near z-axis) ────────────
+    let h = Math.max(r * 1e-4, 1e-6);
+
+    let Vxp = yangPotentialXYZ(x + h, y, z, n, l, m, Z);
+    let Vxm = yangPotentialXYZ(x - h, y, z, n, l, m, Z);
+    let Vyp = yangPotentialXYZ(x, y + h, z, n, l, m, Z);
+    let Vym = yangPotentialXYZ(x, y - h, z, n, l, m, Z);
+    let Vzp = yangPotentialXYZ(x, y, z + h, n, l, m, Z);
+    let Vzm = yangPotentialXYZ(x, y, z - h, n, l, m, Z);
+
+    const maxDV = Math.max(Math.abs(Vxp - Vxm), Math.abs(Vyp - Vym), Math.abs(Vzp - Vzm));
+    if (maxDV > 10) {
+      h *= 0.01;
+      Vxp = yangPotentialXYZ(x + h, y, z, n, l, m, Z);
+      Vxm = yangPotentialXYZ(x - h, y, z, n, l, m, Z);
+      Vyp = yangPotentialXYZ(x, y + h, z, n, l, m, Z);
+      Vym = yangPotentialXYZ(x, y - h, z, n, l, m, Z);
+      Vzp = yangPotentialXYZ(x, y, z + h, n, l, m, Z);
+      Vzm = yangPotentialXYZ(x, y, z - h, n, l, m, Z);
+    }
+
+    fx = -(Vxp - Vxm) / (2 * h);
+    fy = -(Vyp - Vym) / (2 * h);
+    fz = -(Vzp - Vzm) / (2 * h);
+
+    if (!Number.isFinite(fx)) fx = 0;
+    if (!Number.isFinite(fy)) fy = 0;
+    if (!Number.isFinite(fz)) fz = 0;
   }
-
-  let fx = -(Vxp - Vxm) / (2 * h);
-  let fy = -(Vyp - Vym) / (2 * h);
-  let fz = -(Vzp - Vzm) / (2 * h);
-
-  // NaN guard
-  if (!Number.isFinite(fx)) fx = 0;
-  if (!Number.isFinite(fy)) fy = 0;
-  if (!Number.isFinite(fz)) fz = 0;
 
   // Cap force magnitude
   const fMag = Math.sqrt(fx * fx + fy * fy + fz * fz);
@@ -294,6 +442,11 @@ function yangEquilibriumRadius(n, l, m, Z) {
 
 // ─── Export ──────────────────────────────────────────────────
 window.assocLegendreP        = assocLegendreP;
+window.laguerreQHJ           = laguerreQHJ;
+window.d2lnR_yang            = d2lnR_yang;
+window.d3lnR_yang            = d3lnR_yang;
+window.d2lnTheta_yang        = d2lnTheta_yang;
+window.d3lnTheta_yang        = d3lnTheta_yang;
 window.yangPotentialDimless  = yangPotentialDimless;
 window.yangPotentialXYZ      = yangPotentialXYZ;
 window.yangForceCartesian    = yangForceCartesian;
