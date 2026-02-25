@@ -8,9 +8,7 @@
 
 **An interactive 3D simulator for hydrogen-like atoms — visualizing quantum trajectories using Yang's Quantum Hamilton-Jacobi theory.**
 
-<!-- Replace with an actual screenshot of your simulation -->
-![Simulation Screenshot](particles_web_app.png)
-
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/72914621-8566-4337-b12b-a7bacd7a44cf" />
 *Screenshot: Hydrogen atom in ground-state equilibrium.*
 
 ---
