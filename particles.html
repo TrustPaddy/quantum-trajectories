@@ -68,14 +68,14 @@
       margin-right:.2rem;
     }
 
-    .wrap{display:grid;grid-template-columns:minmax(260px,320px) 1fr;gap:14px;padding:14px}
+    .wrap{display:grid;grid-template-columns:minmax(200px,240px) 1fr;gap:0;padding:0}
     .panel{
-      background:var(--panel);border:1px solid rgba(255,255,255,.06);
-      border-radius:var(--radius);padding:10px;box-shadow:var(--shadow);
-      height:calc(100vh - 90px);overflow:auto;position:relative;z-index:3;
+      background:var(--panel);border:none;border-right:1px solid rgba(148,163,184,.3);
+      border-radius:0;padding:10px;
+      height:100%;overflow:auto;position:relative;z-index:3;
     }
     .scene{
-      position:relative;z-index:1;overflow:hidden;
+      position:relative;z-index:1;overflow:hidden;margin:14px;
       background:radial-gradient(1200px 600px at 50% 10%,rgba(125,211,252,.08),transparent 60%),
                  linear-gradient(180deg,#0b0f17,#05070c);
       border:1px solid rgba(255,255,255,.06);border-radius:var(--radius);box-shadow:var(--shadow);
@@ -389,11 +389,24 @@
           <span class="section-title">Selected Particle</span>
         </div>
 
-        <!-- Manual position input -->
-        <div class="readout">
-          <div class="hidden-field">x <input id="Xs" type="text" placeholder="x (pm)"></div>
-          <div class="hidden-field">y <input id="Ys" type="text" placeholder="y (pm)"></div>
-          <div class="hidden-field">z <input id="Zs" type="text" placeholder="z (pm)"></div>
+        <!-- Coordinate mode toggle -->
+        <div style="display:flex;gap:6px;margin-bottom:6px">
+          <button id="btnCartesian" class="mini" style="border-color:rgba(125,211,252,.6);border-radius:20px">Cart.</button>
+          <button id="btnSpherical" class="mini" style="border-radius:20px">Sph.</button>
+        </div>
+
+        <!-- Cartesian inputs (default: visible) -->
+        <div id="coordCartesian" class="readout">
+          <div class="hidden-field">x <input id="Xs" type="text" placeholder="x (pm)"> <span id="selectedX" style="min-width:52px;color:var(--acc);font-size:.78rem">–</span></div>
+          <div class="hidden-field">y <input id="Ys" type="text" placeholder="y (pm)"> <span id="selectedY" style="min-width:52px;color:var(--acc);font-size:.78rem">–</span></div>
+          <div class="hidden-field">z <input id="Zs" type="text" placeholder="z (pm)"> <span id="selectedZ" style="min-width:52px;color:var(--acc);font-size:.78rem">–</span></div>
+        </div>
+
+        <!-- Spherical inputs (default: hidden) -->
+        <div id="coordSpherical" class="readout" style="display:none">
+          <div class="hidden-field">r <input id="Rs" type="text" placeholder="r (pm)"> <span id="selectedR" style="min-width:52px;color:var(--acc);font-size:.78rem">–</span></div>
+          <div class="hidden-field">φ <input id="Phis" type="text" placeholder="φ (rad)"> <span id="selectedPhi" style="min-width:52px;color:var(--acc);font-size:.78rem">–</span></div>
+          <div class="hidden-field">θ <input id="Thetas" type="text" placeholder="θ (rad)"> <span id="selectedTheta" style="min-width:52px;color:var(--acc);font-size:.78rem">–</span></div>
         </div>
 
         <!-- ═══ DEBUG INFO ═══ -->
@@ -436,7 +449,7 @@
 
       <!-- ─── 3D Scene ─── -->
       <main class="scene">
-        <a-scene embedded background="color: #111"
+        <a-scene embedded background="color: #3d3d3d"
                  renderer="colorManagement: true; physicallyCorrectLights: true">
           <a-entity id="camera" position="0 0 200" camera look-controls></a-entity>
           <a-entity id="mouseCursor" cursor="rayOrigin: mouse"

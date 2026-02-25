@@ -112,6 +112,18 @@ const UI = {
   selectedX: document.getElementById("selectedX"),
   selectedY: document.getElementById("selectedY"),
   selectedZ: document.getElementById("selectedZ"),
+  selectedR:     document.getElementById("selectedR"),
+  selectedPhi:   document.getElementById("selectedPhi"),
+  selectedTheta: document.getElementById("selectedTheta"),
+  // Spherical inputs
+  Rs:     document.getElementById("Rs"),
+  Phis:   document.getElementById("Phis"),
+  Thetas: document.getElementById("Thetas"),
+  // Coordinate toggle
+  btnCartesian:  document.getElementById("btnCartesian"),
+  btnSpherical:  document.getElementById("btnSpherical"),
+  coordCartesian: document.getElementById("coordCartesian"),
+  coordSpherical: document.getElementById("coordSpherical"),
   // Velocity display
   vx: document.getElementById("vx"),
   vy: document.getElementById("vy"),
@@ -190,8 +202,8 @@ function addBohrRing() {
   const ring = createEntity("a-ring", { 
     "radius-inner": r * 0.99, 
     "radius-outer": r * 1.01, 
-    color: "grey", 
-    opacity: 0.2, 
+    color: "white",
+    opacity: 0.6,
     "ignore-ray": true 
   });
   SCENE.el.appendChild(ring); 
@@ -237,6 +249,9 @@ function updateSelectedParticleDisplay() {
     if (UI.selectedX) UI.selectedX.textContent = "–";
     if (UI.selectedY) UI.selectedY.textContent = "–";
     if (UI.selectedZ) UI.selectedZ.textContent = "–";
+    if (UI.selectedR)     UI.selectedR.textContent     = "–";
+    if (UI.selectedPhi)   UI.selectedPhi.textContent   = "–";
+    if (UI.selectedTheta) UI.selectedTheta.textContent = "–";
     if (UI.vx) UI.vx.textContent = "0";
     if (UI.vy) UI.vy.textContent = "0";
     if (UI.vz) UI.vz.textContent = "0";
@@ -247,10 +262,16 @@ function updateSelectedParticleDisplay() {
   const p = STATE.particles[idx];
   const pm = SI.a0 * 1e12;
 
-  // Position
+  // Cartesian position
   if (UI.selectedX) UI.selectedX.textContent = (p.pos.x * pm).toFixed(3);
   if (UI.selectedY) UI.selectedY.textContent = (p.pos.y * pm).toFixed(3);
   if (UI.selectedZ) UI.selectedZ.textContent = (p.pos.z * pm).toFixed(3);
+
+  // Spherical position
+  const [r, theta, phi] = cartInPolar(p.pos.x, p.pos.y, p.pos.z);
+  if (UI.selectedR)     UI.selectedR.textContent     = (r * pm).toFixed(3);
+  if (UI.selectedPhi)   UI.selectedPhi.textContent   = phi.toFixed(4);
+  if (UI.selectedTheta) UI.selectedTheta.textContent = theta.toFixed(4);
 
   // Velocity
   if (UI.vx) UI.vx.textContent = (p.vel.x * V_AU).toExponential(2);
@@ -333,6 +354,10 @@ function _onPointerDown(ev) {
   UI.Xs.value = (particle.pos.x * pm).toFixed(2);
   UI.Ys.value = (particle.pos.y * pm).toFixed(2);
   UI.Zs.value = (particle.pos.z * pm).toFixed(2);
+  const [r0, theta0, phi0] = cartInPolar(particle.pos.x, particle.pos.y, particle.pos.z);
+  if (UI.Rs)     UI.Rs.value     = (r0 * pm).toFixed(2);
+  if (UI.Phis)   UI.Phis.value   = phi0.toFixed(4);
+  if (UI.Thetas) UI.Thetas.value = theta0.toFixed(4);
 
   // Add dragging cursor class
   const sceneEl = SCENE.el;
@@ -419,6 +444,10 @@ function _onPointerMove(ev) {
       UI.Xs.value = (particle.pos.x * pm).toFixed(2);
       UI.Ys.value = (particle.pos.y * pm).toFixed(2);
       UI.Zs.value = (particle.pos.z * pm).toFixed(2);
+      const [rD, thetaD, phiD] = cartInPolar(particle.pos.x, particle.pos.y, particle.pos.z);
+      if (UI.Rs)     UI.Rs.value     = (rD * pm).toFixed(2);
+      if (UI.Phis)   UI.Phis.value   = phiD.toFixed(4);
+      if (UI.Thetas) UI.Thetas.value = thetaD.toFixed(4);
     }
   }
 
@@ -1008,6 +1037,41 @@ function d2PhiLnPsi() { return 0; }   // correct for all m = 0 states
     p.acc.set(0,0,0);
   });
 });
+
+// ─── Spherical position input (r in pm, φ/θ in rad → a.u.) ──
+["Rs","Phis","Thetas"].forEach((key, dimIdx) => {
+  UI[key].addEventListener("keypress", ev => {
+    if (ev.key !== "Enter") return;
+    const val = parseFloat(UI[key].value);
+    if (!Number.isFinite(val)) return;
+    const p = STATE.particles[STATE.indexOfParticle];
+    if (!p) return;
+    const [curR, curTheta, curPhi] = cartInPolar(p.pos.x, p.pos.y, p.pos.z);
+    let r = curR, theta = curTheta, phi = curPhi;
+    if (dimIdx === 0)      r     = (val * 1e-12) / SI.a0; // r: pm → a.u.
+    else if (dimIdx === 1) phi   = val;                    // φ in rad
+    else                   theta = val;                    // θ in rad
+    const sinT = Math.sin(theta);
+    p.pos.set(r * sinT * Math.cos(phi), r * sinT * Math.sin(phi), r * Math.cos(theta));
+    p.acc.set(0, 0, 0);
+  });
+});
+
+// ─── Coordinate toggle buttons ───────────────────────────────
+if (UI.btnCartesian) {
+  UI.btnCartesian.addEventListener("click", () => {
+    UI.coordCartesian.style.display = "";
+    UI.coordSpherical.style.display = "none";
+    UI.btnCartesian.style.borderColor = "rgba(125,211,252,.6)";
+    UI.btnSpherical.style.borderColor = "";
+  });
+  UI.btnSpherical.addEventListener("click", () => {
+    UI.coordCartesian.style.display = "none";
+    UI.coordSpherical.style.display = "";
+    UI.btnSpherical.style.borderColor = "rgba(125,211,252,.6)";
+    UI.btnCartesian.style.borderColor = "";
+  });
+}
 
 // ═════════════════════════════════════════════════════════════
 //  PHYSICS: Gather-then-Integrate
