@@ -680,23 +680,9 @@ function updateQuantumUI() {
 }
 
 function tryTransition(nN, nL, nM) {
-  if (nN<1||nL<0||nL>=nN||Math.abs(nM)>nL) {
+  if (nN<1||nL<0||nL>=nN||nM<0||nM>nL) {
     if (typeof window.showToast === 'function') {
-      window.showToast(`Invalid quantum numbers: ℓ must be < n, |m| ≤ ℓ`, 'error');
-    }
-    return false;
-  }
-  if (Math.abs(nL-STATE.L)!==1) {
-    console.warn(`Δℓ=${nL-STATE.L} verboten`);
-    if (typeof window.showToast === 'function') {
-      window.showToast(`Selection rule violated: Δℓ must be ±1 (current Δℓ = ${nL-STATE.L})`, 'warning');
-    }
-    return false;
-  }
-  if (Math.abs(nM-STATE.M)>1) {
-    console.warn(`Δm=${nM-STATE.M} verboten`);
-    if (typeof window.showToast === 'function') {
-      window.showToast(`Selection rule violated: Δm must be ≤ ±1 (current Δm = ${nM-STATE.M})`, 'warning');
+      window.showToast(`Invalid quantum numbers: n≥1, 0≤ℓ≤n−1, 0≤m≤ℓ`, 'error');
     }
     return false;
   }
@@ -772,25 +758,30 @@ function tryTransition(nN, nL, nM) {
   applyLevelCamera(); updateQuantumUI(); return true;
 }
 
-function incrementEnergyLevel() { 
-  tryTransition(STATE.N+1, STATE.L+1, STATE.M); 
+function incrementEnergyLevel() {
+  const newN = STATE.N + 1;
+  tryTransition(newN, newN - 1, newN - 1);
 }
-function decrementEnergyLevel() { 
-  tryTransition(STATE.N-1, STATE.L-1, STATE.M); 
+function decrementEnergyLevel() {
+  const newN = STATE.N - 1;
+  if (newN < 1) return;
+  const newL = Math.min(STATE.L, newN - 1);
+  const newM = Math.min(STATE.M, newL);
+  tryTransition(newN, newL, newM);
 }
-function incrementAngularMomentum() { 
-  tryTransition(STATE.N, STATE.L+1, STATE.M); 
+function incrementAngularMomentum() {
+  tryTransition(STATE.N, STATE.L+1, STATE.M);
 }
-function decrementAngularMomentum() { 
-  tryTransition(STATE.N, STATE.L-1, STATE.M); 
+function decrementAngularMomentum() {
+  const newL = STATE.L - 1;
+  const newM = Math.min(STATE.M, Math.max(0, newL));
+  tryTransition(STATE.N, newL, newM);
 }
-function incrementM() { 
-  if (!tryTransition(STATE.N, STATE.L+1, STATE.M+1)) 
-    tryTransition(STATE.N, STATE.L-1, STATE.M+1); 
+function incrementM() {
+  tryTransition(STATE.N, STATE.L, STATE.M + 1);
 }
-function decrementM() { 
-  if (!tryTransition(STATE.N, STATE.L+1, STATE.M-1)) 
-    tryTransition(STATE.N, STATE.L-1, STATE.M-1); 
+function decrementM() {
+  tryTransition(STATE.N, STATE.L, STATE.M - 1);
 }
 
 // ─── Relaxation ──────────────────────────────────────────────
