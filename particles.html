@@ -267,7 +267,7 @@
       <div class="section">
         <span class="section-label">Settings:</span>
         <label for="dtSlider" style="opacity:.85">Δt</label>
-        <input id="dtSlider" class="range" type="range" min="5" max="200" step="1" value="33" />
+        <input id="dtSlider" class="range" type="range" min="1" max="200" step="1" value="33" />
         <span id="dtValue" class="chip" style="padding:.2rem .45rem">33 ms</span>
 
         <label style="margin-left:.5rem">Model
@@ -449,7 +449,7 @@
 
       <!-- ─── 3D Scene ─── -->
       <main class="scene">
-        <a-scene embedded background="color: #3d3d3d"
+        <a-scene embedded background="color: #111111"
                  renderer="colorManagement: true; physicallyCorrectLights: true">
           <a-entity id="camera" position="0 0 200" camera look-controls></a-entity>
           <a-entity id="mouseCursor" cursor="rayOrigin: mouse"

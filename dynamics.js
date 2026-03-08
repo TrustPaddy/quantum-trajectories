@@ -188,9 +188,13 @@ function clearScene() {
 }
 
 function addParticleEntity(particle, opts = {}) {
+  const isProton = particle.type === "proton";
+  const baseColor = opts.color ?? (isProton ? "#ff2222" : "#00aaff");
   const sphere = createEntity("a-sphere", {
-    radius: opts.radius ?? (particle.type === "proton" ? 14 : 5),
-    color: opts.color ?? (particle.type === "proton" ? "red" : "blue"),
+    radius: opts.radius ?? (isProton ? 14 : 5),
+    color: baseColor,
+    emissive: baseColor,
+    "emissive-intensity": 0.8,
     class: "clickable",
   });
   SCENE.el.appendChild(sphere);
@@ -491,12 +495,12 @@ _initDragDrop();
 // ─── Atom builders (positions in a₀) ─────────────────────────
 function pushProton(posAU, radius = 14) { 
   STATE.particles.push(new Particle(MP_AU, +1, posAU.clone(), "proton"));  
-  addParticleEntity(STATE.particles.at(-1), { radius, color: "red" });  
+  addParticleEntity(STATE.particles.at(-1), { radius, color: "#ff2222" });
   addBohrRing(); 
 }
 function pushElectron(posAU, radius = 5) { 
   STATE.particles.push(new Particle(1,-1, posAU.clone(), "electron")); 
-  addParticleEntity(STATE.particles.at(-1), { radius, color: "blue" }); 
+  addParticleEntity(STATE.particles.at(-1), { radius, color: "#00aaff" });
 }
 
 function resetAndClear() { 
