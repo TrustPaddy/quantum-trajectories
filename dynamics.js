@@ -348,6 +348,15 @@ function _getCameraObj() {
     || SCENE.camera?.object3D;
 }
 
+function _snapToAxisPlane(camDir, point) {
+  const ax = Math.abs(camDir.x), ay = Math.abs(camDir.y), az = Math.abs(camDir.z);
+  const normal = new THREE.Vector3();
+  if (ax >= ay && ax >= az)      normal.set(1, 0, 0);
+  else if (ay >= ax && ay >= az) normal.set(0, 1, 0);
+  else                           normal.set(0, 0, 1);
+  return new THREE.Plane().setFromNormalAndCoplanarPoint(normal, point);
+}
+
 function _onPointerDown(ev) {
   // Shift+click → velocity arrow mode for selected particle
   if (ev.shiftKey && STATE.indexOfParticle >= 0) {
@@ -363,7 +372,7 @@ function _onPointerDown(ev) {
       const origin = p.pos.clone().multiplyScalar(SCENE_SCALE);
       const camDir = new THREE.Vector3();
       cam.getWorldDirection(camDir);
-      _velDrag.plane.setFromNormalAndCoplanarPoint(camDir, origin);
+      _velDrag.plane.copy(_snapToAxisPlane(camDir, origin));
       _velDrag.lastHit.copy(origin);
       _velDrag.active = true;
       _velDrag.arrow = new THREE.ArrowHelper(
@@ -431,7 +440,7 @@ function _onPointerDown(ev) {
 
   const camDir = new THREE.Vector3();
   cam.getWorldDirection(camDir);
-  _drag.plane.setFromNormalAndCoplanarPoint(camDir, worldPos);
+  _drag.plane.copy(_snapToAxisPlane(camDir, worldPos));
 
   // Calculate grab offset (so particle doesn't snap to cursor)
   if (_drag.raycaster.ray.intersectPlane(_drag.plane, _drag.intersect)) {
