@@ -178,13 +178,32 @@ const STATE = {
 
 // ─── Scene management ────────────────────────────────────────
 function clearScene() {
-  for (let i = STATE.spheres.length - 1; i >= 0; i--) 
-    try { SCENE.el.removeChild(STATE.spheres[i]); 
+  for (let i = STATE.spheres.length - 1; i >= 0; i--)
+    try { SCENE.el.removeChild(STATE.spheres[i]);
   } catch {}
-  for (let i = STATE.bohrRings.length - 1; i >= 0; i--) 
-    try { SCENE.el.removeChild(STATE.bohrRings[i]); 
-  } catch {}
+  for (let i = STATE.bohrRings.length - 1; i >= 0; i--)
+    for (const r of STATE.bohrRings[i])
+      try { SCENE.el.removeChild(r); } catch {}
   STATE.particles.length = STATE.spheres.length = STATE.bohrRings.length = 0;
+}
+
+function _removeParticleAt(idx) {
+  const p = STATE.particles[idx];
+  if (!p) return;
+  const sphere = STATE.spheres[idx];
+  if (sphere) try { SCENE.el.removeChild(sphere); } catch {}
+  STATE.spheres.splice(idx, 1);
+  if (p.type === 'proton') {
+    let ringIdx = 0;
+    for (let i = 0; i < idx; i++)
+      if (STATE.particles[i].type === 'proton') ringIdx++;
+    const rings = STATE.bohrRings[ringIdx];
+    if (rings) rings.forEach(r => { try { SCENE.el.removeChild(r); } catch {} });
+    STATE.bohrRings.splice(ringIdx, 1);
+  }
+  STATE.particles.splice(idx, 1);
+  STATE.indexOfParticle = -1;
+  updateSelectedParticleDisplay();
 }
 
 function addParticleEntity(particle, opts = {}) {
@@ -201,17 +220,17 @@ function addParticleEntity(particle, opts = {}) {
   STATE.spheres.push(sphere);
 }
 
-function addBohrRing() {
+function addBohrRings() {
   const r = SCENE_SCALE;
-  const ring = createEntity("a-ring", { 
-    "radius-inner": r * 0.99, 
-    "radius-outer": r * 1.01, 
-    color: "white",
-    opacity: 0.6,
-    "ignore-ray": true 
-  });
-  SCENE.el.appendChild(ring); 
-  STATE.bohrRings.push(ring);
+  const base = { "radius-inner": r * 0.99, "radius-outer": r * 1.01,
+                  color: "white", opacity: 0.6, "ignore-ray": true };
+  const rXY = createEntity("a-ring", base);
+  const rXZ = createEntity("a-ring", { ...base, rotation: "-90 0 0" });
+  const rYZ = createEntity("a-ring", { ...base, rotation: "0 90 0" });
+  SCENE.el.appendChild(rXY);
+  SCENE.el.appendChild(rXZ);
+  SCENE.el.appendChild(rYZ);
+  STATE.bohrRings.push([rXY, rXZ, rYZ]);
 }
 
 function syncEntitiesToParticles() {
@@ -224,9 +243,9 @@ function syncEntitiesToParticles() {
     sz = p.pos.z * S;
     const sphere = STATE.spheres[i];
     if (sphere) sphere.object3D.position.set(sx, sy, sz);
-    if (p.type === "proton") { 
-      const ring = STATE.bohrRings[ringIdx++]; 
-      if (ring) ring.object3D.position.set(sx, sy, sz); 
+    if (p.type === "proton") {
+      const rings = STATE.bohrRings[ringIdx++];
+      if (rings) rings.forEach(r => r.object3D.position.set(sx, sy, sz));
     }
     if (p.type === "electron") {
       if (i === 1) { 
@@ -303,6 +322,15 @@ const _drag = {
   offset: new THREE.Vector3(),  // grab offset so particle doesn't jump to cursor
 };
 
+// Shift+Drag velocity arrow (sets initial velocity of selected particle)
+const _velDrag = {
+  active: false,
+  plane:   new THREE.Plane(),
+  lastHit: new THREE.Vector3(),
+  arrow:   null,  // THREE.ArrowHelper, added directly to THREE.js scene
+};
+const VEL_SCALE = 0.5; // a.u. velocity per a.u. of arrow length
+
 function _getCanvasEl() {
   return SCENE.el?.canvas || SCENE.el?.querySelector('canvas');
 }
@@ -321,6 +349,33 @@ function _getCameraObj() {
 }
 
 function _onPointerDown(ev) {
+  // Shift+click → velocity arrow mode for selected particle
+  if (ev.shiftKey && STATE.indexOfParticle >= 0) {
+    _updateMouse(ev);
+    const p = STATE.particles[STATE.indexOfParticle];
+    if (p) {
+      // Remove any existing arrow before starting a new one
+      if (_velDrag.arrow) {
+        SCENE.el.object3D.remove(_velDrag.arrow);
+        _velDrag.arrow = null;
+      }
+      const cam = _getCameraObj();
+      const origin = p.pos.clone().multiplyScalar(SCENE_SCALE);
+      const camDir = new THREE.Vector3();
+      cam.getWorldDirection(camDir);
+      _velDrag.plane.setFromNormalAndCoplanarPoint(camDir, origin);
+      _velDrag.lastHit.copy(origin);
+      _velDrag.active = true;
+      _velDrag.arrow = new THREE.ArrowHelper(
+        new THREE.Vector3(1, 0, 0), origin, 0, 0x00ffff
+      );
+      _velDrag.arrow.visible = false;
+      SCENE.el.object3D.add(_velDrag.arrow);
+      ev.preventDefault();
+      return;
+    }
+  }
+
   _updateMouse(ev);
   const cam = _getCameraObj();
   if (!cam) return;
@@ -383,9 +438,6 @@ function _onPointerDown(ev) {
     _drag.offset.copy(worldPos).sub(_drag.intersect);
   }
 
-  // Disable look-controls while dragging
-  const lookControls = SCENE.camera?.getAttribute?.('look-controls');
-  if (lookControls !== null) SCENE.camera.setAttribute('look-controls', 'enabled', false);
 
   // Visual highlight: make dragged particle emissive
   const sphere = STATE.spheres[idx];
@@ -396,6 +448,36 @@ function _onPointerDown(ev) {
 
 function _onPointerMove(ev) {
   _updateMouse(ev);
+
+  // Velocity arrow drag (Shift+drag)
+  if (_velDrag.active) {
+    const cam = _getCameraObj();
+    if (cam) {
+      _drag.raycaster.setFromCamera(_drag.mouse, cam);
+      const hit = new THREE.Vector3();
+      if (_drag.raycaster.ray.intersectPlane(_velDrag.plane, hit)) {
+        _velDrag.lastHit.copy(hit);
+        const p = STATE.particles[STATE.indexOfParticle];
+        if (p) {
+          const origin = p.pos.clone().multiplyScalar(SCENE_SCALE);
+          const delta = hit.clone().sub(origin);
+          const len = delta.length();
+          if (len > 1) {
+            _velDrag.arrow.visible = true;
+            _velDrag.arrow.setDirection(delta.clone().normalize());
+            _velDrag.arrow.setLength(len, Math.min(len * 0.25, 30), Math.min(len * 0.12, 15));
+          } else {
+            _velDrag.arrow.visible = false;
+          }
+          // Live preview in velocity display
+          const s = VEL_SCALE / SCENE_SCALE;
+          p.vel.set(delta.x * s, delta.y * s, delta.z * s);
+        }
+      }
+    }
+    ev.preventDefault();
+    return;
+  }
 
   // Hover feedback: show grab cursor when hovering over particles
   if (!_drag.active) {
@@ -459,6 +541,18 @@ function _onPointerMove(ev) {
 }
 
 function _onPointerUp(ev) {
+  // Release velocity arrow
+  if (_velDrag.active) {
+    _velDrag.active = false;
+    // If simulation is not running: keep arrow visible until Start is pressed
+    if (STATE.isAnimationRunning && _velDrag.arrow) {
+      SCENE.el.object3D.remove(_velDrag.arrow);
+      _velDrag.arrow = null;
+    }
+    // p.vel was already set live in _onPointerMove – keep it
+    return;
+  }
+
   if (!_drag.active) return;
 
   // Remove highlight
@@ -471,9 +565,6 @@ function _onPointerUp(ev) {
   const sceneEl = SCENE.el;
   if (sceneEl) sceneEl.classList.remove('dragging-particle');
 
-  // Re-enable look-controls
-  const lookControls = SCENE.camera?.getAttribute?.('look-controls');
-  if (lookControls !== null) SCENE.camera.setAttribute('look-controls', 'enabled', true);
 }
 
 // Attach listeners once A-Frame scene is ready
@@ -492,11 +583,22 @@ function _initDragDrop() {
 }
 _initDragDrop();
 
+// Delete / Backspace → remove selected particle
+document.addEventListener('keydown', ev => {
+  if (ev.key !== 'Delete' && ev.key !== 'Backspace') return;
+  // Don't fire when typing in an input/textarea
+  const tag = ev.target?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+  const idx = STATE.indexOfParticle;
+  if (idx < 0 || !STATE.particles[idx]) return;
+  _removeParticleAt(idx);
+});
+
 // ─── Atom builders (positions in a₀) ─────────────────────────
 function pushProton(posAU, radius = 14) { 
   STATE.particles.push(new Particle(MP_AU, +1, posAU.clone(), "proton"));  
   addParticleEntity(STATE.particles.at(-1), { radius, color: "#ff2222" });
-  addBohrRing(); 
+  addBohrRings();
 }
 function pushElectron(posAU, radius = 5) { 
   STATE.particles.push(new Particle(1,-1, posAU.clone(), "electron")); 
@@ -596,9 +698,14 @@ function updateDistanceAndEnergy() {
 }
 
 // ─── Controls ────────────────────────────────────────────────
-function startAnimation() { 
-  STATE.isAnimationRunning = !STATE.isAnimationRunning; 
-  UI.myButton.textContent = STATE.isAnimationRunning ? "Stop" : "Start"; 
+function startAnimation() {
+  STATE.isAnimationRunning = !STATE.isAnimationRunning;
+  UI.myButton.textContent = STATE.isAnimationRunning ? "Stop" : "Start";
+  // Remove velocity preview arrow when simulation starts
+  if (STATE.isAnimationRunning && _velDrag.arrow) {
+    SCENE.el.object3D.remove(_velDrag.arrow);
+    _velDrag.arrow = null;
+  }
 }
 function toggleThetaPhi(on) { 
   STATE.isThetaPhi = !!on; 
@@ -670,12 +777,28 @@ const LEVEL_CAMERA = {
   5: { radiation: 0.99999, z: 1600 }, 
   6: { radiation: 0.999995, z: 2200 } 
 };
-function applyLevelCamera() { 
-  const c = LEVEL_CAMERA[STATE.N]; 
-  if (c) { 
-    STATE.radiation = c.radiation; 
-    SCENE.camera.setAttribute("position", { x:0, y:0, z:c.z }); 
-  } 
+function applyLevelCamera() {
+  const c = LEVEL_CAMERA[STATE.N];
+  if (!c) return;
+  STATE.radiation = c.radiation;
+
+  // Protonen-Schwerpunkt in Szeneneinheiten
+  const protons = STATE.particles.filter(p => p.type === 'proton');
+  const centroid = new THREE.Vector3();
+  if (protons.length) {
+    protons.forEach(p => centroid.add(p.pos));
+    centroid.divideScalar(protons.length).multiplyScalar(SCENE_SCALE);
+  }
+
+  const oc = SCENE.camera?.components?.['orbit-controls'];
+  if (oc) {
+    oc.target.copy(centroid);
+    oc.distance = Math.max(oc.data.minDistance, Math.min(oc.data.maxDistance, c.z));
+    oc.theta = 0;
+    oc.phi   = Math.PI / 2;
+  } else {
+    SCENE.camera.setAttribute("position", { x: centroid.x, y: centroid.y, z: centroid.z + c.z });
+  }
 }
 function updateQuantumUI() { 
   UI.nLvl.textContent = String(STATE.N); 
@@ -863,8 +986,8 @@ function changeCountProton(delta) {
   else if (delta < 0) { 
     for (let i = STATE.particles.length-1; i >= 0; i--) { 
       if (STATE.particles[i].type === "proton") { 
-        const ring = STATE.bohrRings.pop(); 
-        if (ring) SCENE.el.removeChild(ring); 
+        const rings = STATE.bohrRings.pop();
+        if (rings) rings.forEach(r => SCENE.el.removeChild(r));
         const s = STATE.spheres[i]; 
         if (s) SCENE.el.removeChild(s); 
         STATE.spheres.splice(i,1); 

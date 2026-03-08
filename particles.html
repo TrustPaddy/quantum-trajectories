@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Particles</title>
   <script src="aframe-v1.5.0.min.js"></script>
+  <script src="orbit-controls.js"></script>
   <style>
     /* ─── Theme variables ─────────────────────────────────── */
     :root{
@@ -451,7 +452,7 @@
       <main class="scene">
         <a-scene embedded background="color: #111111"
                  renderer="colorManagement: true; physicallyCorrectLights: true">
-          <a-entity id="camera" position="0 0 200" camera look-controls></a-entity>
+          <a-entity id="camera" position="0 0 200" camera orbit-controls></a-entity>
           <a-entity id="mouseCursor" cursor="rayOrigin: mouse"
                     raycaster="objects: .clickable; far: 1000; interval: 50"></a-entity>
           <a-entity light="type: ambient; color: #fff; intensity: 0.6"></a-entity>
