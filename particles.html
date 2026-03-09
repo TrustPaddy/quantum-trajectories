@@ -53,21 +53,36 @@
       background:var(--panel);
       backdrop-filter:saturate(1.2) blur(8px);
       border-bottom:1px solid rgba(148,163,184,.3);
-      flex-wrap:wrap;
+      flex-wrap:wrap;overflow:hidden;
     }
-    .title{font-weight:700;letter-spacing:.2px}
-    .spacer{flex:1}
+    .title{font-weight:700;letter-spacing:.2px;white-space:nowrap;flex-shrink:0}
+    .spacer{flex:1;min-width:0}
     .group{display:inline-flex;align-items:center;gap:.5rem}
     .section{
       display:inline-flex;align-items:center;gap:.5rem;
       padding:.3rem .6rem;border-radius:10px;
       background:rgba(255,255,255,.03);
       border:1px solid rgba(255,255,255,.06);
+      flex-shrink:0;white-space:nowrap;
     }
     .section-label{
       font-size:.8rem;opacity:.7;font-weight:600;
       margin-right:.2rem;
     }
+    .physics-toggle{
+      background:none;border:none;color:var(--txt);cursor:pointer;
+      font-size:.8rem;font-weight:600;opacity:.85;padding:.3rem .2rem;
+      display:inline-flex;align-items:center;gap:.25rem;white-space:nowrap;
+    }
+    .physics-toggle:hover{opacity:1}
+    .phys-chevron{display:inline-block;transition:transform .2s}
+    .phys-chevron.open{transform:rotate(90deg)}
+    .physics-content{
+      display:inline-flex;align-items:center;gap:.5rem;
+      overflow:hidden;max-width:600px;opacity:1;
+      transition:max-width .25s ease,opacity .2s ease;
+    }
+    .physics-content.collapsed{max-width:0;opacity:0;pointer-events:none}
 
     .wrap{display:grid;grid-template-columns:minmax(200px,240px) 1fr;gap:0;padding:0}
     .panel{
@@ -122,7 +137,7 @@
     }
 
     /* ─── Range slider ─────────────────────────────────────── */
-    .range{appearance:none;width:160px;height:6px;border-radius:999px;background:var(--range-track);outline:none}
+    .range{appearance:none;width:clamp(60px,7vw,120px);height:6px;border-radius:999px;background:var(--range-track);outline:none}
     .range::-webkit-slider-thumb{appearance:none;width:16px;height:16px;border-radius:50%;background:var(--acc);border:0;box-shadow:0 2px 6px rgba(0,0,0,.4)}
     .range::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--acc);border:0;box-shadow:0 2px 6px rgba(0,0,0,.4)}
 
@@ -248,17 +263,19 @@
         <button id="myButton" class="btn primary" title="Start / Stop">Start</button>
         <button id="PathButton" class="btn" title="Record Path">▶</button>
         <button id="btnDeletePath" class="btn" title="Clear Path">Clear Path</button>
-        <button id="btnResetV" class="btn" title="Reset Velocities to Zero">v = 0</button>
       </div>
 
       <!-- Physics Modes -->
       <div class="section">
-        <span class="section-label">Physics:</span>
-<button id="btnLarmor"   class="btn toggle" aria-pressed="false" title="Larmor Radiation">Larmor</button>
-        <button id="btnThetaPhi" class="btn toggle" aria-pressed="false" title="θ/φ Quantum Terms" style="opacity:0.4">θ/φ</button>
-        <button id="btnLock"     class="btn toggle" aria-pressed="false" title="Nucleus Lock">Lock</button>
-        <button id="btnRelax"    class="btn toggle" aria-pressed="false" title="Automatic Relaxation">Relax</button>
-        <button id="btnQHJ"      class="btn toggle active" aria-pressed="true" title="Yang QHJ Dynamics (full quantum potential)" style="border-color:rgba(168,85,247,.4)">QHJ</button>
+        <button class="physics-toggle" title="Toggle Physics Controls">Physics <span class="phys-chevron">▸</span></button>
+        <div class="physics-content">
+          <button id="btnResetV"   class="btn" title="Reset Velocities to Zero">v = 0</button>
+          <button id="btnLarmor"   class="btn toggle" aria-pressed="false" title="Larmor Radiation">Larmor</button>
+          <button id="btnThetaPhi" class="btn toggle" aria-pressed="false" title="θ/φ Quantum Terms" style="opacity:0.4">θ/φ</button>
+          <button id="btnLock"     class="btn toggle" aria-pressed="false" title="Nucleus Lock">Lock</button>
+          <button id="btnRelax"    class="btn toggle" aria-pressed="false" title="Automatic Relaxation">Relax</button>
+          <button id="btnQHJ"      class="btn toggle active" aria-pressed="true" title="Yang QHJ Dynamics (full quantum potential)" style="border-color:rgba(168,85,247,.4)">QHJ</button>
+        </div>
       </div>
 
       <div class="spacer"></div>
@@ -555,6 +572,26 @@
       on('PathButton',    () => window.startRecord());
       on('btnDeletePath', () => window.deletePath());
       on('btnResetV',     () => window.setVelocitiesToZero());
+
+      // ── Physics section toggle ──
+      const physicsContent = document.querySelector('.physics-content');
+      const physicsToggle  = document.querySelector('.physics-toggle');
+      const physChevron    = document.querySelector('.phys-chevron');
+      let userOverride = false;
+
+      function setPhysicsCollapsed(collapsed) {
+        physicsContent.classList.toggle('collapsed', collapsed);
+        physChevron.classList.toggle('open', !collapsed);
+      }
+      function autoCollapsePhysics() {
+        if (!userOverride) setPhysicsCollapsed(window.innerWidth < 1100);
+      }
+      physicsToggle.addEventListener('click', () => {
+        userOverride = true;
+        setPhysicsCollapsed(!physicsContent.classList.contains('collapsed'));
+      });
+      window.addEventListener('resize', () => { userOverride = false; autoCollapsePhysics(); });
+      autoCollapsePhysics();
 
       document.getElementById('modelSelect')
         .addEventListener('change', e => window.changeAtomModel(e.target.value));
