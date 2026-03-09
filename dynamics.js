@@ -163,7 +163,7 @@ const STATE = {
   isLarmor: false, 
   isThetaPhi: false, 
   isRelaxation: false,
-  dynamicsMode: 'classic',  // 'classic' or 'qhj'
+  dynamicsMode: 'qhj',  // 'classic' or 'qhj'
   _relaxTimer: 0,
   dt: 0.08,               // a.u. time step
   dtMs: 1000 / 30,        // display interval
@@ -564,9 +564,13 @@ function _onPointerUp(ev) {
 
   if (!_drag.active) return;
 
-  // Remove highlight
+  // Remove highlight – restore to particle's base emissive colour
   const sphere = STATE.spheres[_drag.particleIdx];
-  if (sphere) sphere.setAttribute('material', 'emissive', '#000');
+  if (sphere) {
+    const releasedParticle = STATE.particles[_drag.particleIdx];
+    const baseEmissive = releasedParticle?.type === 'proton' ? '#ff2222' : '#00aaff';
+    sphere.setAttribute('material', 'emissive', baseEmissive);
+  }
 
   _drag.active = false;
 

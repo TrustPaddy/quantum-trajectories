@@ -254,12 +254,11 @@
       <!-- Physics Modes -->
       <div class="section">
         <span class="section-label">Physics:</span>
-        <button id="btnAnsatz"   class="btn toggle" aria-pressed="false" title="Angular Momentum Ansatz">Ang. Mom.</button>
-        <button id="btnLarmor"   class="btn toggle" aria-pressed="false" title="Larmor Radiation">Larmor</button>
-        <button id="btnThetaPhi" class="btn toggle" aria-pressed="false" title="θ/φ Quantum Terms">θ/φ</button>
+<button id="btnLarmor"   class="btn toggle" aria-pressed="false" title="Larmor Radiation">Larmor</button>
+        <button id="btnThetaPhi" class="btn toggle" aria-pressed="false" title="θ/φ Quantum Terms" style="opacity:0.4">θ/φ</button>
         <button id="btnLock"     class="btn toggle" aria-pressed="false" title="Nucleus Lock">Lock</button>
         <button id="btnRelax"    class="btn toggle" aria-pressed="false" title="Automatic Relaxation">Relax</button>
-        <button id="btnQHJ"      class="btn toggle" aria-pressed="false" title="Yang QHJ Dynamics (full quantum potential)" style="border-color:rgba(168,85,247,.4)">QHJ</button>
+        <button id="btnQHJ"      class="btn toggle active" aria-pressed="true" title="Yang QHJ Dynamics (full quantum potential)" style="border-color:rgba(168,85,247,.4)">QHJ</button>
       </div>
 
       <div class="spacer"></div>
@@ -298,17 +297,25 @@
             <ul>
               <li><strong>Start/Stop:</strong> Click the Start button to begin the simulation</li>
               <li><strong>Drag Particles:</strong> Click and drag any particle to reposition it in 3D space</li>
+              <li><strong>Set Initial Velocity:</strong> Hold Shift and drag from a selected particle to define its starting velocity (arrow shows direction and magnitude)</li>
+              <li><strong>Delete Particle:</strong> Select a particle, then press Delete (or Backspace) to remove it</li>
               <li><strong>Record Paths:</strong> Click ▶ to record electron trajectories (button glows green)</li>
+            </ul>
+
+            <h4>Camera Controls</h4>
+            <ul>
+              <li><strong>Scroll / Mouse Wheel:</strong> Zoom in and out</li>
+              <li><strong>Middle Mouse + Drag:</strong> Orbit — rotate the view around the target</li>
+              <li><strong>Right Mouse + Drag:</strong> Pan — move the camera target point</li>
             </ul>
 
             <h4>Physics Modes</h4>
             <ul>
-              <li><strong>Ang. Mom.:</strong> Enables angular momentum term in force calculation</li>
               <li><strong>Larmor:</strong> Applies radiation damping (exponential velocity decay)</li>
               <li><strong>θ/φ:</strong> Adds quantum angular correction terms from wavefunction</li>
               <li><strong>Lock:</strong> Freezes nucleus in place (protons don't move)</li>
               <li><strong>Relax:</strong> Automatic energy level transitions (electrons decay to lower states)</li>
-              <li><strong>QHJ:</strong> Yang's Quantum Hamilton–Jacobi dynamics — replaces individual force terms with the full quantum potential V̄(ρ,θ) including shell barriers, universal quantum term, and angular confinement. Ang.Mom. and θ/φ buttons become automatic.</li>
+              <li><strong>QHJ:</strong> Yang's Quantum Hamilton–Jacobi dynamics — replaces individual force terms with the full quantum potential V̄(ρ,θ) including shell barriers, universal quantum term, and angular confinement. θ/φ becomes automatic.</li>
             </ul>
 
             <h4>Quantum Numbers</h4>
@@ -462,12 +469,11 @@
         <div class="hud">
           <div class="chip">FPS: <strong id="fpsRead">--</strong></div>
           <div class="chip">Δt: <strong id="dtRead">33 ms</strong></div>
-          <div class="chip">Ang. Mom.: <strong id="ansatzRead">off</strong></div>
           <div class="chip">Larmor: <strong id="larmorRead">off</strong></div>
           <div class="chip">Lock: <strong id="lockRead">off</strong></div>
           <div class="chip">θ/φ: <strong id="thetaPhiRead">off</strong></div>
           <div class="chip">Relax: <strong id="relaxRead">off</strong></div>
-          <div class="chip">Mode: <strong id="modeRead">Classic</strong></div>
+          <div class="chip">Mode: <strong id="modeRead">QHJ</strong></div>
         </div>
       </main>
     </div>
@@ -517,7 +523,7 @@
         'incrementEnergyLevel','decrementEnergyLevel',
         'incrementAngularMomentum','decrementAngularMomentum',
         'incrementM','decrementM',
-        'changeAnsatz','toggleLamor','toggleThetaPhi',
+        'toggleLamor','toggleThetaPhi',
         'lockNucleus','changeCountElectron','changeCountProton',
         'toggleRelaxation','toggleQHJ',
       ];
@@ -568,11 +574,7 @@
       on('pDown', () => window.changeCountProton(-1));
 
       // ── Toggle buttons ──
-      bindToggle('btnAnsatz', next => {
-        window.changeAnsatz();
-        document.getElementById('ansatzRead').textContent = next ? 'on' : 'off';
-      });
-      bindToggle('btnLarmor', next => {
+bindToggle('btnLarmor', next => {
         window.toggleLamor(next);
         document.getElementById('larmorRead').textContent = next ? 'on' : 'off';
       });
@@ -593,12 +595,12 @@
         const isQHJ = mode === 'qhj';
         document.getElementById('modeRead').textContent = isQHJ ? 'QHJ' : 'Classic';
         // Visual feedback: dim the buttons that are superseded by QHJ
-        ['btnAnsatz','btnThetaPhi'].forEach(id => {
+        ['btnThetaPhi'].forEach(id => {
           const b = document.getElementById(id);
           if (b) b.style.opacity = isQHJ ? '0.4' : '1';
         });
         if (isQHJ && typeof window.showToast === 'function') {
-          window.showToast('Yang QHJ mode: full quantum potential active (Ang.Mom. & θ/φ are now automatic)', 'info');
+          window.showToast('Yang QHJ mode: full quantum potential active (θ/φ is now automatic)', 'info');
         }
       });
 
