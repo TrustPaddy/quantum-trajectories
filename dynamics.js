@@ -325,6 +325,7 @@ const _drag = {
 // Shift+Drag velocity arrow (sets initial velocity of selected particle)
 const _velDrag = {
   active: false,
+  wasRunning: false,
   plane:   new THREE.Plane(),
   lastHit: new THREE.Vector3(),
   arrow:   null,  // THREE.ArrowHelper, added directly to THREE.js scene
@@ -375,6 +376,11 @@ function _onPointerDown(ev) {
       _velDrag.plane.copy(_snapToAxisPlane(camDir, origin));
       _velDrag.lastHit.copy(origin);
       _velDrag.active = true;
+      _velDrag.wasRunning = STATE.isAnimationRunning;
+      if (STATE.isAnimationRunning) {
+        STATE.isAnimationRunning = false;
+        UI.myButton.textContent = "Start";
+      }
       _velDrag.arrow = new THREE.ArrowHelper(
         new THREE.Vector3(1, 0, 0), origin, 0, 0x00ffff
       );
@@ -478,9 +484,6 @@ function _onPointerMove(ev) {
           } else {
             _velDrag.arrow.visible = false;
           }
-          // Live preview in velocity display
-          const s = VEL_SCALE / SCENE_SCALE;
-          p.vel.set(delta.x * s, delta.y * s, delta.z * s);
         }
       }
     }
@@ -553,12 +556,34 @@ function _onPointerUp(ev) {
   // Release velocity arrow
   if (_velDrag.active) {
     _velDrag.active = false;
-    // If simulation is not running: keep arrow visible until Start is pressed
-    if (STATE.isAnimationRunning && _velDrag.arrow) {
+    const p = STATE.particles[STATE.indexOfParticle];
+    if (p && _velDrag.arrow?.visible) {
+      const origin = p.pos.clone().multiplyScalar(SCENE_SCALE);
+      const delta = _velDrag.lastHit.clone().sub(origin);
+      const s = VEL_SCALE / SCENE_SCALE;
+      p.vel.x += delta.x * s;
+      p.vel.y += delta.y * s;
+      p.vel.z += delta.z * s;
+    }
+    // Only remove arrow if simulation was running (it will resume).
+    // If simulation was already stopped, keep arrow visible until Start is pressed.
+    if (_velDrag.wasRunning && _velDrag.arrow) {
       SCENE.el.object3D.remove(_velDrag.arrow);
       _velDrag.arrow = null;
     }
-    // p.vel was already set live in _onPointerMove – keep it
+    // Infer new quantum state from updated position + velocity
+    if (p && STATE.particles[0]) {
+      const qs = inferQuantumState(p.pos, STATE.particles[0].pos, p.vel);
+      if (qs) {
+        STATE.N = qs.n; STATE.L = qs.l; STATE.M = qs.m;
+        updateQuantumUI();
+        _notifyQuantumChange(qs.n, qs.l, qs.m);
+      }
+    }
+    if (_velDrag.wasRunning) {
+      STATE.isAnimationRunning = true;
+      UI.myButton.textContent = "Stop";
+    }
     return;
   }
 
@@ -573,6 +598,20 @@ function _onPointerUp(ev) {
   }
 
   _drag.active = false;
+
+  // Infer n from electron-proton distance (Bohr radii: r ≈ n²a₀)
+  const draggedP = STATE.particles[_drag.particleIdx];
+  if (draggedP?.type === 'electron' && STATE.particles[0]) {
+    const r = draggedP.pos.distanceTo(STATE.particles[0].pos);
+    const n = Math.max(1, Math.min(Math.round(Math.sqrt(r * STATE.Z)), 7));
+    if (n !== STATE.N) {
+      const l = Math.min(STATE.L, n - 1);
+      const m = Math.max(-l, Math.min(STATE.M, l));
+      STATE.N = n; STATE.L = l; STATE.M = m;
+      updateQuantumUI();
+      _notifyQuantumChange(n, l, m);
+    }
+  }
 
   // Remove dragging cursor class
   const sceneEl = SCENE.el;
@@ -819,10 +858,54 @@ function updateQuantumUI() {
   if (UI.mLvl) UI.mLvl.textContent = String(STATE.M); 
 }
 
+function _notifyQuantumChange(n, l, m) {
+  if (typeof window.showToast === 'function') {
+    window.showToast(`Quantum state → (${n}, ${l}, ${m})`, 'info');
+  }
+}
+
+// Infer closest quantum state (n,l,m) from classical position and velocity.
+// pos/posNuc: THREE.Vector3 in a₀, vel: THREE.Vector3 in a.u.
+// Returns {n,l,m} or null if unbound (E≥0).
+function inferQuantumState(pos, posNuc, vel) {
+  const rVec = pos.clone().sub(posNuc);
+  const r = rVec.length();
+  if (r < 1e-6) return null;
+
+  const v2 = vel.lengthSq();
+  const E = 0.5 * v2 - STATE.Z / r;   // Hartree: E_n = -Z²/(2n²)
+  if (E >= 0) return null;             // ionised
+
+  const n_raw = STATE.Z / Math.sqrt(-2 * E);
+  const n = Math.max(1, Math.min(Math.round(n_raw), 7));
+
+  // Angular momentum L = r × v (in ℏ, since ℏ=1 a.u.)
+  const Lvec = rVec.clone().cross(vel);
+  const L = Lvec.length();
+  // l(l+1) = L²  →  l = (−1 + √(1+4L²)) / 2
+  const l_raw = (-1 + Math.sqrt(1 + 4 * L * L)) / 2;
+  const l = Math.max(0, Math.min(Math.round(l_raw), n - 1));
+
+  // m from z-component of L (quantisation axis = z).
+  // If the orbit is mostly around the z-axis (|Lz|/|L| > 0.5), maximize |m| = l
+  // so that a horizontal tangential impulse cleanly gives m = ±l.
+  const Lz = Lvec.z;
+  let m;
+  if (l === 0) {
+    m = 0;
+  } else if (L > 0.1 && Math.abs(Lz) / L > 0.5) {
+    m = Math.sign(Lz) * l;
+  } else {
+    m = Math.max(-l, Math.min(Math.round(Lz), l));
+  }
+
+  return { n, l, m };
+}
+
 function tryTransition(nN, nL, nM) {
-  if (nN<1||nL<0||nL>=nN||nM<0||nM>nL) {
+  if (nN<1||nL<0||nL>=nN||Math.abs(nM)>nL) {
     if (typeof window.showToast === 'function') {
-      window.showToast(`Invalid quantum numbers: n≥1, 0≤ℓ≤n−1, 0≤m≤ℓ`, 'error');
+      window.showToast(`Invalid quantum numbers: n≥1, 0≤ℓ≤n−1, |m|≤ℓ`, 'error');
     }
     return false;
   }
@@ -880,17 +963,40 @@ function tryTransition(nN, nL, nM) {
         e.pos.addScaledVector(radHat, kickFraction * newR);
       }
     } else {
-      // Classic mode: scale position along existing direction
-      const dir = e.pos.clone().sub(nuc.pos);
-      const dirLen = dir.length() || 1e-9;
-      dir.divideScalar(dirLen);
-      e.pos.copy(nuc.pos).addScaledVector(dir, newR);
+      // Classic mode: place electron at (ρ_eq, θ_eq) from Yang potential
+      const thetaEq = window.yangEquilibriumTheta
+        ? window.yangEquilibriumTheta(nL, nM)
+        : Math.PI / 2;
 
-      if (nL > 0 && !STATE.isThetaPhi) {
-        const vCirc = Math.sqrt(nL * (nL + 1)) / newR;
-        const perp = new THREE.Vector3(-dir.y, dir.x, 0);
-        const pLen = perp.length();
-        if (pLen > 1e-9) { perp.divideScalar(pLen); e.vel.addScaledVector(perp, vCirc); }
+      const oldDir = e.pos.clone().sub(nuc.pos);
+      const phi = Math.atan2(oldDir.y, oldDir.x);
+
+      const sinTh = Math.sin(thetaEq);
+      const cosTh = Math.cos(thetaEq);
+
+      e.pos.set(
+        nuc.pos.x + newR * sinTh * Math.cos(phi),
+        nuc.pos.y + newR * sinTh * Math.sin(phi),
+        nuc.pos.z + newR * cosTh
+      );
+
+      if (nM !== 0) {
+        // v_φ = |m| / (ρ sinθ) from Yang Eq. (43c)
+        const vCirc = Math.abs(nM) / (newR * sinTh);
+        e.vel.set(
+          -Math.sign(nM) * vCirc * Math.sin(phi),
+           Math.sign(nM) * vCirc * Math.cos(phi),
+          0
+        );
+      } else if (nL > 0) {
+        // m=0: add small radial kick to show oscillation
+        const radHat = new THREE.Vector3(
+          sinTh * Math.cos(phi),
+          sinTh * Math.sin(phi),
+          cosTh
+        );
+        const kickFraction = 0.08 / nN;
+        e.pos.addScaledVector(radHat, kickFraction * newR);
       }
     }
     e.acc.set(0, 0, 0);
@@ -906,7 +1012,7 @@ function decrementEnergyLevel() {
   const newN = STATE.N - 1;
   if (newN < 1) return;
   const newL = Math.min(STATE.L, newN - 1);
-  const newM = Math.min(STATE.M, newL);
+  const newM = Math.max(-newL, Math.min(STATE.M, newL));
   tryTransition(newN, newL, newM);
 }
 function incrementAngularMomentum() {
@@ -914,7 +1020,7 @@ function incrementAngularMomentum() {
 }
 function decrementAngularMomentum() {
   const newL = STATE.L - 1;
-  const newM = Math.min(STATE.M, Math.max(0, newL));
+  const newM = Math.max(-newL, Math.min(STATE.M, newL));
   tryTransition(STATE.N, newL, newM);
 }
 function incrementM() {
@@ -1077,26 +1183,26 @@ function radialCorrectionForce(n, l, r, Z) {
   return -0.5 * (dp - dm) / (2 * h);
 }
 
-// Most-probable radius for state (n,l) - used for transition rescaling
-// Solves dV_eff/dr = 0 numerically (Newton's method on total radial force)
+// Most-probable radius for state (n,l,m) - used for transition rescaling
 function bohrRadius(n, l, Z) {
+  // Prefer yangEquilibriumRadius (handles all states correctly)
+  if (window.yangEquilibriumRadius) {
+    return window.yangEquilibriumRadius(n, l, STATE.M || 0, Z);
+  }
+  // Fallback: Newton's method on the classic radial potential
   let r = n * n / Z;
   for (let iter = 0; iter < 40; iter++) {
     if (r < 0.1) r = 0.1;
-    const r2 = r * r, r3 = r2 * r;
-    // Total radial force: Coulomb + Kratzer + centrifugal + radial correction
-    const Fc = Z / r2;                      // Coulomb inward
-    const Fk = -1 / r3;                     // Kratzer outward
-    const Fcent = -l * (l + 1) / r3;        // centrifugal outward
-    const Frad = radialCorrectionForce(n, l, r, Z);
-    const F = Fc + Fk + Fcent + Frad;
-    // Numerical derivative of F for Newton step
-    const h = r * 1e-4;
-    const Fp = (() => { const rr=r+h, rr2=rr*rr, rr3=rr2*rr;
-      return Z/rr2 - 1/rr3 - l*(l+1)/rr3 + radialCorrectionForce(n,l,rr,Z); })();
-    const Fm = (() => { const rr=r-h, rr2=rr*rr, rr3=rr2*rr;
-      return Z/rr2 - 1/rr3 - l*(l+1)/rr3 + radialCorrectionForce(n,l,rr,Z); })();
-    const dF = (Fp - Fm) / (2 * h);
+    const h = Math.max(r * 1e-4, 1e-6);
+    // Use classicPotentialRy for radial force at θ=π/2
+    const Vp = classicPotentialRy(r + h, Math.PI/2, n, l, STATE.M || 0, Z);
+    const Vm = classicPotentialRy(r - h, Math.PI/2, n, l, STATE.M || 0, Z);
+    const F  = -(Vp - Vm) / (2 * h);  // f̄_ρ at θ=π/2
+    const Vpp = classicPotentialRy(r + 2*h, Math.PI/2, n, l, STATE.M || 0, Z);
+    const Vmm = classicPotentialRy(r - 2*h, Math.PI/2, n, l, STATE.M || 0, Z);
+    const Fp  = -(Vpp - Vp) / (2 * h);
+    const Fm  = -(Vm - Vmm) / (2 * h);
+    const dF  = (Fp - Fm) / (2 * h);
     if (Math.abs(dF) < 1e-20) break;
     const dr = -F / dF;
     r += clamp(dr, -r * 0.5, r * 0.5);
@@ -1155,6 +1261,318 @@ function d2ThetaLnPsi(n, l, theta) {
   return 0;   // l > 5 not tabulated
 }
 function d2PhiLnPsi() { return 0; }   // correct for all m = 0 states
+
+// ═════════════════════════════════════════════════════════════
+//  CLASSIC MODE: Explicit Yang quantum-potential per state
+//  ─────────────────────────────────────────────────────────
+//  V̄(ρ,θ)/Ry = -2Z/ρ + A(θ)/ρ² + B(ρ)
+//
+//  Forces (Ry):  f̄_ρ = -2Z/ρ² + 2A(θ)/ρ³ - B'(ρ)
+//                f̄_θ = -A'(θ)/ρ²
+//
+//  Conversion to Hartree/a₀:  F_r = 0.5·f̄_ρ
+//                              F_θ = 0.5·f̄_θ/ρ
+//
+//  Source: Yang_quantum-potential(4).odt & equations.tex
+// ═════════════════════════════════════════════════════════════
+
+// ─── Explicit total potential V̄/Ry for tabulated states ─────
+function classicPotentialRy(rho, theta, n, l, m, Z) {
+  rho   = Math.max(rho, 1e-6);
+  theta = Math.max(1e-6, Math.min(Math.PI - 1e-6, theta));
+
+  const rho2 = rho * rho;
+  const c = Math.cos(theta), s = Math.sin(theta);
+  const c2 = c * c, s2 = s * s;
+  const EPS = 1e-15;
+  const cot2 = c2 / (s2 || EPS);             // cot²θ
+
+  // Coulomb (common to all states)
+  const vCoul = -2 * Z / rho;
+
+  // Encode state as single key for switch (potential is symmetric in m)
+  const key = n * 100 + l * 10 + Math.abs(m);
+
+  let A, B;
+  switch (key) {
+
+    case 100:  // (1,0,0)
+      A = (4 + cot2) / 4;
+      B = 0;
+      break;
+
+    case 200:  // (2,0,0)
+      A = (4 + cot2) / 4;
+      { const d = Z * rho - 2; B = (Z * Z) / (d * d || EPS); }
+      break;
+
+    case 210:  // (2,1,0)
+      A = (8 + cot2 + 4 / (c2 || EPS)) / 4;   // 4sec²θ = 4/cos²θ
+      B = 0;
+      break;
+
+    case 211:  // (2,1,1)
+      A = (8 + cot2 + 4 / (s2 || EPS)) / 4;   // 4csc²θ = 4/sin²θ
+      B = 0;
+      break;
+
+    case 300:  // (3,0,0)
+      A = (4 + cot2) / 4;
+      { const D = 2*Z*Z*rho2 - 18*Z*rho + 27;
+        const t = 4*Z*rho - 18;
+        B = -4*Z*Z / (D || EPS) + Z*Z*t*t / ((D*D) || EPS);
+      }
+      break;
+
+    case 310:  // (3,1,0)
+      { const tan2 = s2 / (c2 || EPS);
+        A = (12 + cot2 + 4 * tan2) / 4;
+      }
+      { const d = Z * rho - 6; B = (Z * Z) / (d * d || EPS); }
+      break;
+
+    case 311:  // (3,1,1)
+      A = (12 + 5 * cot2) / 4;
+      { const d = Z * rho - 6; B = (Z * Z) / (d * d || EPS); }
+      break;
+
+    case 320:  // (3,2,0)
+      { const d320 = 3 * c2 - 1;
+        A = (12 + cot2) / 4 - 6 * (s2 - 2) / (d320 * d320 || EPS);
+      }
+      B = 0;
+      break;
+
+    case 321:  // (3,2,1)
+      A = (12 + (4 - 5 * s2) / ((s2 * c2) || EPS)) / 4;
+      B = 0;
+      break;
+
+    case 322:  // (3,2,2)
+      A = (12 + 9 / (s2 || EPS)) / 4;          // 9csc²θ = 9/sin²θ
+      B = 0;
+      break;
+
+    default:
+      // Not tabulated — fall back to general yang potential
+      if (window.yangPotentialDimless)
+        return window.yangPotentialDimless(rho, theta, n, l, m, Z);
+      // Last resort: Coulomb + universal quantum term only
+      A = (4 + cot2) / 4;
+      B = 0;
+      break;
+  }
+
+  let V = vCoul + A / rho2 + B;
+  if (!Number.isFinite(V)) V = 2000;
+  return Math.max(-2000, Math.min(2000, V));
+}
+
+// ─── Explicit forces f̄_ρ, f̄_θ in Ry units ─────────────────
+function classicForceRy(rho, theta, n, l, m, Z) {
+  rho   = Math.max(rho, 1e-6);
+  theta = Math.max(1e-6, Math.min(Math.PI - 1e-6, theta));
+
+  const rho2 = rho * rho, rho3 = rho2 * rho;
+  const c = Math.cos(theta), s = Math.sin(theta);
+  const c2 = c * c, s2 = s * s;
+  const EPS = 1e-15;
+  const cot2 = c2 / (s2 || EPS);
+  // cotθ·csc²θ = cosθ / sin³θ
+  const cotCsc2 = c / ((s2 * s) || EPS);
+
+  const key = n * 100 + l * 10 + Math.abs(m);
+
+  let A, Ap, Bp;  // A(θ), A'(θ), B'(ρ)
+
+  switch (key) {
+
+    case 100:  // (1,0,0)
+      A  = (4 + cot2) / 4;
+      Ap = -cotCsc2 / 2;
+      Bp = 0;
+      break;
+
+    case 200:  // (2,0,0)
+      A  = (4 + cot2) / 4;
+      Ap = -cotCsc2 / 2;
+      { const d = Z * rho - 2; Bp = -2*Z*Z*Z / ((d*d*d) || EPS); }
+      break;
+
+    case 210:  // (2,1,0)
+      { const sec2 = 1 / (c2 || EPS);
+        const tan_ = s / (c || EPS);
+        A  = (8 + cot2 + 4 * sec2) / 4;
+        Ap = (-cotCsc2 + 4 * sec2 * tan_) / 2;
+      }
+      Bp = 0;
+      break;
+
+    case 211:  // (2,1,1)
+      { const csc2 = 1 / (s2 || EPS);
+        A  = (8 + cot2 + 4 * csc2) / 4;
+        Ap = -5 * cotCsc2 / 2;
+        // d/dθ(cot²θ + 4csc²θ) = -2cotθcsc²θ - 8csc²θcotθ = -10cotθcsc²θ → /4 = -5cotθcsc²θ/2
+      }
+      Bp = 0;
+      break;
+
+    case 300:  // (3,0,0)
+      A  = (4 + cot2) / 4;
+      Ap = -cotCsc2 / 2;
+      { const D = 2*Z*Z*rho2 - 18*Z*rho + 27;
+        const D3 = D * D * D;
+        const t = 4*Z*rho - 18;
+        // B = -4Z²/D + Z²t²/D²
+        // B' = -4Z³·t·(2Z²ρ²-18Zρ+81)/D³
+        const inner = 2*Z*Z*rho2 - 18*Z*rho + 81;
+        Bp = -4*Z*Z*Z * t * inner / (D3 || EPS);
+      }
+      break;
+
+    case 310:  // (3,1,0)
+      { const tan2 = s2 / (c2 || EPS);
+        const tan_ = s / (c || EPS);
+        const sec2 = 1 / (c2 || EPS);
+        A  = (12 + cot2 + 4 * tan2) / 4;
+        Ap = (-cotCsc2 + 4 * tan_ * sec2) / 2;
+      }
+      { const d = Z * rho - 6; Bp = -2*Z*Z*Z / ((d*d*d) || EPS); }
+      break;
+
+    case 311:  // (3,1,1)
+      A  = (12 + 5 * cot2) / 4;
+      Ap = -5 * cotCsc2 / 2;
+      { const d = Z * rho - 6; Bp = -2*Z*Z*Z / ((d*d*d) || EPS); }
+      break;
+
+    case 320:  // (3,2,0) — use numerical derivatives
+    case 321:  // (3,2,1) — use numerical derivatives
+      { const h = Math.max(rho * 1e-4, 1e-6);
+        const hth = 1e-5;
+        const Vrp = classicPotentialRy(rho + h, theta, n, l, m, Z);
+        const Vrm = classicPotentialRy(rho - h, theta, n, l, m, Z);
+        const Vtp = classicPotentialRy(rho, theta + hth, n, l, m, Z);
+        const Vtm = classicPotentialRy(rho, theta - hth, n, l, m, Z);
+        return {
+          fr:  -(Vrp - Vrm) / (2 * h),
+          fth: -(Vtp - Vtm) / (2 * hth)
+        };
+      }
+
+    case 322:  // (3,2,2)
+      { const csc2 = 1 / (s2 || EPS);
+        A  = (12 + 9 * csc2) / 4;
+        Ap = -9 * cotCsc2 / 2;
+      }
+      Bp = 0;
+      break;
+
+    default:
+      // Fall back to general yang force if available
+      if (window.yangForceCartesian) return null;  // signal to use yangForceCartesian
+      // Last resort: Coulomb + universal quantum term
+      A  = (4 + cot2) / 4;
+      Ap = -cotCsc2 / 2;
+      Bp = 0;
+      break;
+  }
+
+  // f̄_ρ = -2Z/ρ² + 2A(θ)/ρ³ - B'(ρ)
+  const fr  = -2 * Z / rho2 + 2 * A / rho3 - Bp;
+  // f̄_θ = -A'(θ)/ρ²
+  const fth = -Ap / rho2;
+
+  return { fr, fth };
+}
+
+// ─── Classic force in Cartesian coords [Hartree/a₀] ─────────
+const CLASSIC_FORCE_CAP_BASE = 200;
+
+function classicForceCartesian(x, y, z, n, l, m, Z) {
+  const forceCap = CLASSIC_FORCE_CAP_BASE * Math.max(1, n * n);
+
+  const r2  = x * x + y * y + z * z;
+  const r   = Math.sqrt(r2);
+  if (r < 1e-10) return { fx: 0, fy: 0, fz: 0 };
+
+  const rho = r;
+  const cosTheta = Math.max(-1, Math.min(1, z / r));
+  const theta    = Math.acos(cosTheta);
+  const rxy      = Math.sqrt(x * x + y * y);
+
+  let fx, fy, fz;
+
+  // Near z-axis: numerical gradient fallback (avoid 1/sinθ singularity)
+  const USE_NUMERICAL = rxy < 1e-8 * r;
+
+  if (!USE_NUMERICAL) {
+    const forces = classicForceRy(rho, theta, n, l, m, Z);
+
+    // If null: fallback to yangForceCartesian for unsupported states
+    if (forces === null && window.yangForceCartesian) {
+      return window.yangForceCartesian(x, y, z, n, l, m, Z);
+    }
+    if (forces === null) return { fx: 0, fy: 0, fz: 0 };
+
+    const { fr: fbar_r, fth: fbar_th } = forces;
+
+    // Convert Ry → Hartree:  F_r = 0.5·f̄_ρ,  F_θ_eff = 0.5·f̄_θ/r
+    const Fr      = 0.5 * fbar_r;
+    const Fth_eff = 0.5 * fbar_th / r;
+
+    // Spherical → Cartesian:
+    //   r̂  = (x/r, y/r, z/r)
+    //   ∂θ/∂(x,y,z) = (xz, yz, −rxy²) / (r²·rxy)
+    const geom = 1.0 / (r2 * rxy);
+    fx = Fr * (x / r) + Fth_eff * (x * z) * geom;
+    fy = Fr * (y / r) + Fth_eff * (y * z) * geom;
+    fz = Fr * (z / r) - Fth_eff * (rxy * rxy) * geom;
+
+    if (!Number.isFinite(fx)) fx = 0;
+    if (!Number.isFinite(fy)) fy = 0;
+    if (!Number.isFinite(fz)) fz = 0;
+
+  } else {
+    // Numerical gradient fallback (near z-axis)
+    let h = Math.max(r * 1e-4, 1e-6);
+    const potXYZ = (xx, yy, zz) => {
+      const rr = Math.sqrt(xx*xx + yy*yy + zz*zz);
+      if (rr < 1e-6) return 0;
+      const th = Math.acos(Math.max(-1, Math.min(1, zz / rr)));
+      return 0.5 * classicPotentialRy(rr, th, n, l, m, Z);
+    };
+
+    let Vxp = potXYZ(x+h, y, z), Vxm = potXYZ(x-h, y, z);
+    let Vyp = potXYZ(x, y+h, z), Vym = potXYZ(x, y-h, z);
+    let Vzp = potXYZ(x, y, z+h), Vzm = potXYZ(x, y, z-h);
+
+    const maxDV = Math.max(Math.abs(Vxp-Vxm), Math.abs(Vyp-Vym), Math.abs(Vzp-Vzm));
+    if (maxDV > 10) {
+      h *= 0.01;
+      Vxp = potXYZ(x+h, y, z); Vxm = potXYZ(x-h, y, z);
+      Vyp = potXYZ(x, y+h, z); Vym = potXYZ(x, y-h, z);
+      Vzp = potXYZ(x, y, z+h); Vzm = potXYZ(x, y, z-h);
+    }
+
+    fx = -(Vxp - Vxm) / (2 * h);
+    fy = -(Vyp - Vym) / (2 * h);
+    fz = -(Vzp - Vzm) / (2 * h);
+
+    if (!Number.isFinite(fx)) fx = 0;
+    if (!Number.isFinite(fy)) fy = 0;
+    if (!Number.isFinite(fz)) fz = 0;
+  }
+
+  // Cap force magnitude
+  const fMag = Math.sqrt(fx * fx + fy * fy + fz * fz);
+  if (fMag > forceCap) {
+    const s = forceCap / fMag;
+    fx *= s;  fy *= s;  fz *= s;
+  }
+
+  return { fx, fy, fz };
+}
 
 // ─── Position input (pm → a.u.) ─────────────────────────────
 ["Xs","Ys","Zs"].forEach((key, idx) => {
@@ -1230,9 +1648,7 @@ function animation() {
   if (STATE.dynamicsMode === 'qhj') {
     gatherForcesQHJ();
   } else {
-    // ── Classic force gathering ──
-    const Lterm = STATE.isAngularMomentum ? 0 : STATE.L * (STATE.L + 1);
-
+    // ── Classic: explicit Yang quantum-potential per state ──
     for (let i = 0; i < pArr.length; i++) {
       const pi = pArr[i];
       pi.acc.set(0, 0, 0);
@@ -1242,55 +1658,31 @@ function animation() {
         if (i === j) continue;
         const pj = pArr[j];
 
-        _v.dv.copy(pj.pos).sub(pi.pos);
-        const dx = _v.dv.x, dy = _v.dv.y, dz = _v.dv.z;
-        const r2 = dx*dx + dy*dy + dz*dz + SOFTENING*SOFTENING;
-        const r  = Math.sqrt(r2);
-        const r3 = r2 * r;
+        const rx = pi.pos.x - pj.pos.x;
+        const ry = pi.pos.y - pj.pos.y;
+        const rz = pi.pos.z - pj.pos.z;
 
-        // Coulomb
-        const Fel = (-STATE.Z * pi.charge * pj.charge) / r2;
-
-        // Kratzer + spin (opposite charges only)
-        let Fk = 0, Fspin = 0;
-        if (pi.charge * pj.charge < 0) {
-          Fk = (pi.charge * pj.charge) / r3;
-          if (Lterm) Fspin = (pi.charge * pj.charge * Lterm) / r3;
-        }
-
-        // Radiation reaction
-        let Frad = 0;
-        const sgn = pi.pos.x < pj.pos.x ? -1 : pi.pos.x > pj.pos.x ? +1 : 0;
-        if (sgn !== 0) Frad = sgn * RAD_CONST_AU * (pi.charge*pj.charge)**2 * pi.vel.x / (r3 * pi.mass);
-
-        // Radial quantum correction (always active for n > 1)
-        let Frad_q = 0;
-        if (pi.charge * pj.charge < 0 && (STATE.N > 1 || STATE.L > 0)) {
-          Frad_q = radialCorrectionForce(STATE.N, STATE.L, r, STATE.Z);
-        }
-
-        // θ/φ correction (with force clamping for stability)
-        let Ftp = 0;
-        if (STATE.isThetaPhi && pi.charge * pj.charge < 0) {
-          const [, th] = cartInPolar(dx, dy, dz);
-          const s2 = Math.sin(th)**2 || 1e-9;
-          const raw = d2ThetaLnPsi(STATE.N, STATE.L, th) + d2PhiLnPsi() / s2;
-          const maxAng = 50;
-          const clamped = Math.max(-maxAng, Math.min(maxAng, raw));
-          Ftp = 2 * clamped / (r3 || 1e-18);
-        }
-
-        // Radial acceleration (ACCUMULATED over all pairs)
-        _v.dir.copy(_v.dv).divideScalar(r);
-        pi.acc.addScaledVector(_v.dir, (Fel + Fk + Frad + Frad_q + Ftp) / pi.mass);
-
-        // Spin term (perpendicular)
-        if (Lterm) {
-          _v.perp.set(-dy, dx, 0);
-          const pLen = _v.perp.length();
-          if (pLen > 1e-12) { 
-            _v.perp.divideScalar(pLen); pi.acc.addScaledVector(_v.perp, Fspin / pi.mass); 
-          }
+        if (pi.type === "electron" && pj.type === "proton") {
+          // Full Yang quantum potential (explicit closed-form per state)
+          const Z = Math.abs(pj.charge);
+          const f = classicForceCartesian(rx, ry, rz, STATE.N, STATE.L, STATE.M, Z);
+          pi.acc.x += f.fx;
+          pi.acc.y += f.fy;
+          pi.acc.z += f.fz;
+        } else if (pi.type === "proton" && pj.type === "electron") {
+          // Newton's 3rd law: proton feels opposite force (scaled by mass)
+          const Z = Math.abs(pi.charge);
+          const f = classicForceCartesian(-rx, -ry, -rz, STATE.N, STATE.L, STATE.M, Z);
+          pi.acc.x -= f.fx / pi.mass;
+          pi.acc.y -= f.fy / pi.mass;
+          pi.acc.z -= f.fz / pi.mass;
+        } else {
+          // e-e or p-p: classical Coulomb only
+          const r2 = rx*rx + ry*ry + rz*rz + SOFTENING*SOFTENING;
+          const r  = Math.sqrt(r2);
+          const Fel = (-pi.charge * pj.charge) / r2;
+          _v.dir.set(rx, ry, rz).divideScalar(r);
+          pi.acc.addScaledVector(_v.dir, Fel / pi.mass);
         }
       }
     }
