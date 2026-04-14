@@ -1297,16 +1297,19 @@ function classicPotentialRy(rho, theta, n, l, m, Z) {
   switch (key) {
 
     case 100:  // (1,0,0)
+    // checked
       A = (4 + cot2) / 4;
       B = 0;
       break;
 
     case 200:  // (2,0,0)
+    // checked
       A = (4 + cot2) / 4;
       { const d = Z * rho - 2; B = (Z * Z) / (d * d || EPS); }
       break;
 
     case 210:  // (2,1,0)
+    // 
       A = (8 + cot2 + 4 / (c2 || EPS)) / 4;   // 4sec²θ = 4/cos²θ
       B = 0;
       break;
@@ -1349,7 +1352,7 @@ function classicPotentialRy(rho, theta, n, l, m, Z) {
       break;
 
     case 322:  // (3,2,2)
-      A = (12 + 9 / (s2 || EPS)) / 4;          // 9csc²θ = 9/sin²θ
+      A = (11 + 9 / (s2 || EPS)) / 4;          // 9csc²θ = 9/sin²θ  (11 = 1 + l + 2·l/sin²-correction)
       B = 0;
       break;
 
@@ -1459,10 +1462,11 @@ function classicForceRy(rho, theta, n, l, m, Z) {
           fth: -(Vtp - Vtm) / (2 * hth)
         };
       }
+      
 
     case 322:  // (3,2,2)
       { const csc2 = 1 / (s2 || EPS);
-        A  = (12 + 9 * csc2) / 4;
+        A  = (11 + 9 * csc2) / 4;
         Ap = -9 * cotCsc2 / 2;
       }
       Bp = 0;

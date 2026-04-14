@@ -411,9 +411,18 @@ function yangEquilibriumTheta(l, m) {
 }
 
 // ─── Equilibrium radius from Yang's potential ────────────────
-// Searches for dV̄/dρ = 0 at θ = θ_eq using Newton's method.
+// Searches for the circular-orbit radius at θ = θ_eq.
+// For m ≠ 0 the Cartesian integration requires a centripetal force
+// F_r = −m²/(ρ³ sin²θ), i.e. f̄^r = −2m²/(ρ³ sin²θ), at the orbit
+// radius — NOT dV̄/dρ = 0.  We therefore solve:
+//   residual(ρ) = f̄^r(ρ) + 2m²/(ρ³ sin²θ) = 0
+// For m = 0 the centrifugal term vanishes and this reduces to the
+// original dV̄/dρ = 0 condition.
 function yangEquilibriumRadius(n, l, m, Z) {
-  const theta = yangEquilibriumTheta(l, m);
+  const theta  = yangEquilibriumTheta(l, m);
+  const sinTh2 = Math.sin(theta) ** 2;
+  const m2     = m * m;                 // centrifugal coefficient (0 when m=0)
+
   let rho = n * n / Z;  // initial guess
 
   for (let iter = 0; iter < 60; iter++) {
@@ -422,18 +431,25 @@ function yangEquilibriumRadius(n, l, m, Z) {
 
     const Vp = yangPotentialDimless(rho + h, theta, n, l, m, Z);
     const Vm = yangPotentialDimless(rho - h, theta, n, l, m, Z);
-    const F = -(Vp - Vm) / (2 * h);   // radial force (dimless)
+    const F  = -(Vp - Vm) / (2 * h);   // f̄^r = −dV̄/dρ
 
-    if (Math.abs(F) < 1e-9) break;
+    // Centripetal correction: circular orbit needs f̄^r = −2m²/(ρ³ sin²θ)
+    const rho3        = rho * rho * rho;
+    const centrifugal = m2 > 0 ? 2 * m2 / (rho3 * sinTh2) : 0;
+    const residual    = F + centrifugal;
 
-    // dF/dρ for Newton step
+    if (Math.abs(residual) < 1e-9) break;
+
+    // d(residual)/dρ for Newton step
     const V2p = yangPotentialDimless(rho + 2 * h, theta, n, l, m, Z);
     const V2m = yangPotentialDimless(rho - 2 * h, theta, n, l, m, Z);
     const V0  = yangPotentialDimless(rho, theta, n, l, m, Z);
-    const dF  = -((V2p - 2 * V0 + V2m) / (h * h)) / 2; // approximate
+    const dF  = -((V2p - 2 * V0 + V2m) / (h * h)) / 2;
+    const dCentrifugal = m2 > 0 ? -6 * m2 / (rho3 * rho * sinTh2) : 0;
+    const dResidual    = dF + dCentrifugal;
 
-    if (Math.abs(dF) < 1e-18) break;
-    const dr = -F / dF;
+    if (Math.abs(dResidual) < 1e-18) break;
+    const dr = -residual / dResidual;
     rho += Math.max(-rho * 0.4, Math.min(rho * 0.4, dr));
   }
 
