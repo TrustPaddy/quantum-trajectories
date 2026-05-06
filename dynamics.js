@@ -802,6 +802,57 @@ function setVelocitiesToZero() {
   }
 }
 
+function disturbElectron() {
+  let idx = STATE.indexOfParticle;
+  if (idx < 0 || STATE.particles[idx]?.type !== "electron") {
+    idx = STATE.particles.findIndex(p => p.type === "electron");
+  }
+  const electron = STATE.particles[idx];
+  if (!electron) {
+    if (typeof window.showToast === "function") window.showToast("No electron to disturb", "warning");
+    return false;
+  }
+
+  const nucleus = STATE.particles.find(p => p.type === "proton");
+  const radius = nucleus ? electron.pos.distanceTo(nucleus.pos) : electron.pos.length();
+  const amplitude = clamp((radius || 1) * 0.08, 0.05, 0.6);
+
+  const cam = _getCameraObj();
+  const right = new THREE.Vector3(1, 0, 0);
+  const up = new THREE.Vector3(0, 1, 0);
+  if (cam?.quaternion) {
+    right.applyQuaternion(cam.quaternion);
+    up.applyQuaternion(cam.quaternion);
+  }
+
+  const angle = Math.random() * Math.PI * 2;
+  const offset = right.multiplyScalar(Math.cos(angle))
+    .add(up.multiplyScalar(Math.sin(angle)))
+    .normalize()
+    .multiplyScalar(amplitude);
+
+  electron.pos.add(offset);
+  electron.vel.set(0, 0, 0);
+  electron.acc.set(0, 0, 0);
+  STATE.indexOfParticle = idx;
+
+  syncEntitiesToParticles();
+  updateSelectedParticleDisplay();
+  const pm = SI.a0 * 1e12;
+  if (UI.Xs) UI.Xs.value = (electron.pos.x * pm).toFixed(2);
+  if (UI.Ys) UI.Ys.value = (electron.pos.y * pm).toFixed(2);
+  if (UI.Zs) UI.Zs.value = (electron.pos.z * pm).toFixed(2);
+  const [r, theta, phi] = cartInPolar(electron.pos.x, electron.pos.y, electron.pos.z);
+  if (UI.Rs) UI.Rs.value = (r * pm).toFixed(2);
+  if (UI.Phis) UI.Phis.value = phi.toFixed(4);
+  if (UI.Thetas) UI.Thetas.value = theta.toFixed(4);
+
+  if (typeof window.showToast === "function") {
+    window.showToast(`Electron disturbed by ${(amplitude * pm).toFixed(2)} pm in camera plane`, "info");
+  }
+  return true;
+}
+
 function lockNucleus() { 
   STATE.isNucleusLocked = !STATE.isNucleusLocked; 
   if (STATE.isNucleusLocked) 
@@ -1352,7 +1403,7 @@ function classicPotentialRy(rho, theta, n, l, m, Z) {
       break;
 
     case 322:  // (3,2,2)
-      A = (11 + 9 / (s2 || EPS)) / 4;          // 9csc²θ = 9/sin²θ  (11 = 1 + l + 2·l/sin²-correction)
+      A = (12 + 9 / (s2 || EPS)) / 4;          // 9csc²θ = 9/sin²θ
       B = 0;
       break;
 
@@ -1466,7 +1517,7 @@ function classicForceRy(rho, theta, n, l, m, Z) {
 
     case 322:  // (3,2,2)
       { const csc2 = 1 / (s2 || EPS);
-        A  = (11 + 9 * csc2) / 4;
+        A  = (12 + 9 * csc2) / 4;
         Ap = -9 * cotCsc2 / 2;
       }
       Bp = 0;
@@ -1892,6 +1943,7 @@ window.changeAtomModel = changeAtomModel;
 window.changeCountProton = changeCountProton;
 window.changeCountElectron = changeCountElectron;
 window.setVelocitiesToZero = setVelocitiesToZero;
+window.disturbElectron = disturbElectron;
 window.lockNucleus = lockNucleus;
 window.startRecord = startRecord;
 window.deletePath = deletePath;
@@ -1908,4 +1960,4 @@ window.tryTransition = tryTransition;
 window.toggleRelaxation = toggleRelaxation;
 window.toggleQHJ = toggleQHJ;
 window.incrementM = incrementM;
-window.decrementM = decrementM;w
+window.decrementM = decrementM;

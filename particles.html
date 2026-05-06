@@ -523,6 +523,7 @@
         <button class="physics-toggle" title="Toggle Physics Controls">Physics <span class="phys-chevron">▸</span></button>
         <div class="physics-content">
           <button id="btnResetV"   class="btn" title="Reset Velocities to Zero">v = 0</button>
+          <button id="btnDisturb"  class="btn warn" title="Electron slightly out of equilibrium">Störung</button>
           <button id="btnLarmor"   class="btn toggle" aria-pressed="false" title="Larmor Radiation">Larmor</button>
           <button id="btnThetaPhi" class="btn toggle" aria-pressed="false" title="θ/φ Quantum Terms" style="opacity:0.4">θ/φ</button>
           <button id="btnLock"     class="btn toggle" aria-pressed="false" title="Nucleus Lock">Lock</button>
@@ -789,6 +790,7 @@
       // ── Fallback guards ──
       const API = [
         'startAnimation','startRecord','deletePath','setVelocitiesToZero',
+        'disturbElectron',
         'changeAtomModel','changeInterval',
         'incrementEnergyLevel','decrementEnergyLevel',
         'incrementAngularMomentum','decrementAngularMomentum',
@@ -825,6 +827,7 @@
       on('PathButton',    () => window.startRecord());
       on('btnDeletePath', () => window.deletePath());
       on('btnResetV',     () => window.setVelocitiesToZero());
+      on('btnDisturb',    () => window.disturbElectron());
 
       // ── Physics section toggle ──
       const physicsContent = document.querySelector('.physics-content');
@@ -956,6 +959,7 @@ bindToggle('btnLarmor', next => {
         test('A-Frame scene embedded',    () => { if (!document.querySelector('a-scene[embedded]')) throw 'missing'; });
         test('Core API functions present', () => {
           ['startAnimation','startRecord','deletePath','setVelocitiesToZero',
+           'disturbElectron',
            'changeInterval','changeAnsatz','toggleLamor','lockNucleus',
            'tryTransition','toggleRelaxation','incrementM','decrementM']
             .forEach(fn => { if (typeof window[fn] !== 'function') throw fn + ' missing'; });
